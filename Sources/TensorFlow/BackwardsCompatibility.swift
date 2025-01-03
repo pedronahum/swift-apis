@@ -23,8 +23,7 @@ import _Differentiation
 /// - Parameters:
 ///   - predicted: Predicted outputs from a neural network.
 ///   - expected: Expected values, i.e. targets, that correspond to the correct output.
-@differentiable(wrt: predicted)
-@differentiable(wrt: (predicted, expected))
+@differentiable(reverse)
 public func l1Loss<Scalar: TensorFlowFloatingPoint>(
   predicted: Tensor<Scalar>,
   expected: Tensor<Scalar>
@@ -37,8 +36,7 @@ public func l1Loss<Scalar: TensorFlowFloatingPoint>(
 /// - Parameters:
 ///   - predicted: Predicted outputs from a neural network.
 ///   - expected: Expected values, i.e. targets, that correspond to the correct output.
-@differentiable(wrt: predicted)
-@differentiable(wrt: (predicted, expected))
+@differentiable(reverse)
 public func l2Loss<Scalar: TensorFlowFloatingPoint>(
   predicted: Tensor<Scalar>,
   expected: Tensor<Scalar>
@@ -51,8 +49,7 @@ public func l2Loss<Scalar: TensorFlowFloatingPoint>(
 /// - Parameters:
 ///   - predicted: Predicted outputs from a neural network.
 ///   - expected: Expected values, i.e. targets, that correspond to the correct output.
-@differentiable(wrt: predicted)
-@differentiable(wrt: (predicted, expected))
+@differentiable(reverse)
 public func hingeLoss<Scalar: TensorFlowFloatingPoint>(
   predicted: Tensor<Scalar>,
   expected: Tensor<Scalar>
@@ -65,8 +62,7 @@ public func hingeLoss<Scalar: TensorFlowFloatingPoint>(
 /// - Parameters:
 ///   - predicted: Predicted outputs from a neural network.
 ///   - expected: Expected values, i.e. targets, that correspond to the correct output.
-@differentiable(wrt: predicted)
-@differentiable(wrt: (predicted, expected))
+@differentiable(reverse)
 public func squaredHingeLoss<Scalar: TensorFlowFloatingPoint>(
   predicted: Tensor<Scalar>,
   expected: Tensor<Scalar>
@@ -79,8 +75,7 @@ public func squaredHingeLoss<Scalar: TensorFlowFloatingPoint>(
 /// - Parameters:
 ///   - predicted: Predicted outputs from a neural network.
 ///   - expected: Expected values, i.e. targets, that correspond to the correct output.
-@differentiable(wrt: predicted)
-@differentiable(wrt: (predicted, expected))
+@differentiable(reverse)
 public func categoricalHingeLoss<Scalar: TensorFlowFloatingPoint>(
   predicted: Tensor<Scalar>,
   expected: Tensor<Scalar>
@@ -94,8 +89,7 @@ public func categoricalHingeLoss<Scalar: TensorFlowFloatingPoint>(
 /// - Parameters:
 ///   - predicted: Predicted outputs from a neural network.
 ///   - expected: Expected values, i.e. targets, that correspond to the correct output.
-@differentiable(wrt: predicted)
-@differentiable(wrt: (predicted, expected))
+@differentiable(reverse)
 public func logCoshLoss<Scalar: TensorFlowFloatingPoint>(
   predicted: Tensor<Scalar>,
   expected: Tensor<Scalar>
@@ -108,8 +102,7 @@ public func logCoshLoss<Scalar: TensorFlowFloatingPoint>(
 /// - Parameters:
 ///   - predicted: Predicted outputs from a neural network.
 ///   - expected: Expected values, i.e. targets, that correspond to the correct output.
-@differentiable(wrt: predicted)
-@differentiable(wrt: (predicted, expected))
+@differentiable(reverse)
 public func poissonLoss<Scalar: TensorFlowFloatingPoint>(
   predicted: Tensor<Scalar>,
   expected: Tensor<Scalar>
@@ -123,8 +116,7 @@ public func poissonLoss<Scalar: TensorFlowFloatingPoint>(
 /// - Parameters:
 ///   - predicted: Predicted outputs from a neural network.
 ///   - expected: Expected values, i.e. targets, that correspond to the correct output.
-@differentiable(wrt: predicted)
-@differentiable(wrt: (predicted, expected))
+@differentiable(reverse)
 public func kullbackLeiblerDivergence<Scalar: TensorFlowFloatingPoint>(
   predicted: Tensor<Scalar>,
   expected: Tensor<Scalar>
@@ -137,7 +129,7 @@ public func kullbackLeiblerDivergence<Scalar: TensorFlowFloatingPoint>(
 /// - Parameters:
 ///   - logits: One-hot encoded outputs from a neural network.
 ///   - labels: Indices (zero-indexed) of the correct outputs.
-@differentiable(wrt: logits)
+@differentiable(reverse)
 public func softmaxCrossEntropy<Scalar: TensorFlowFloatingPoint>(
   logits: Tensor<Scalar>,
   probabilities: Tensor<Scalar>
@@ -149,8 +141,7 @@ public func softmaxCrossEntropy<Scalar: TensorFlowFloatingPoint>(
 /// - Parameters:
 ///   - logits: The unscaled output of a neural network.
 ///   - labels: Integer values that correspond to the correct output.
-@differentiable(wrt: logits)
-@differentiable(wrt: (logits, labels))
+@differentiable(reverse)
 public func sigmoidCrossEntropy<Scalar: TensorFlowFloatingPoint>(
   logits: Tensor<Scalar>,
   labels: Tensor<Scalar>

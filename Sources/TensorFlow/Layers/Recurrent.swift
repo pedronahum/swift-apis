@@ -24,7 +24,7 @@ public struct RNNCellInput<Input: Differentiable, State: Differentiable>: Differ
   /// The previous state.
   public var state: State
 
-  @differentiable
+  @differentiable(reverse)
   public init(input: Input, state: State) {
     self.input = input
     self.state = state
@@ -41,7 +41,7 @@ public struct RNNCellOutput<Output: Differentiable, State: Differentiable>: Diff
   /// The current state.
   public var state: State
 
-  @differentiable
+  @differentiable(reverse)
   public init(output: Output, state: State) {
     self.output = output
     self.state = state
@@ -76,7 +76,7 @@ extension RecurrentLayerCell {
   ///   - timeStepInput: The input at the current time step.
   ///   - previousState: The previous state of the recurrent layer cell.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func callAsFunction(
     input: TimeStepInput,
     state: State
@@ -84,7 +84,7 @@ extension RecurrentLayerCell {
     self(RNNCellInput(input: input, state: state))
   }
 
-  @differentiable
+  @differentiable(reverse)
   public func call(input: TimeStepInput, state: State) -> RNNCellOutput<TimeStepOutput, State> {
     self(RNNCellInput(input: input, state: state))
   }
@@ -122,7 +122,7 @@ public struct BasicRNNCell<Scalar: TensorFlowFloatingPoint>: RecurrentLayerCell 
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The hidden state.
-  @differentiable
+  @differentiable(reverse)
   public func callAsFunction(_ input: Input) -> Output {
     let concatenatedInput = input.input.concatenated(with: input.state, alongAxis: 1)
     let newState = tanh(matmul(concatenatedInput, weight) + bias)
@@ -202,58 +202,112 @@ public struct LSTMCell<Scalar: TensorFlowFloatingPoint>: RecurrentLayerCell {
     public var cell: Tensor<Scalar>
     public var hidden: Tensor<Scalar>
 
-    @differentiable
+    @differentiable(reverse)
     public init(cell: Tensor<Scalar>, hidden: Tensor<Scalar>) {
       self.cell = cell
       self.hidden = hidden
     }
 
+    // -- MARK: - Concatenate
     /// Concatenates two values.
-    @differentiable
+    @differentiable(reverse)
     public static func concatenate(_ lhs: Self, _ rhs: Self) -> Self {
-      // TODO(TF-1005): Remove workaround for differenting concatenated.
+      // Default forward pass: just do the concatenation along axis -1.
       let concatCell = lhs.cell.concatenated(with: rhs.cell, alongAxis: -1)
       let concatHidden = lhs.hidden.concatenated(with: rhs.hidden, alongAxis: -1)
-      let cell = concatCell.withDerivative { [shape = concatCell.shape] in
-          if $0 == Tensor(0) { $0 = Tensor(zeros: shape) }
+      return Self(cell: concatCell, hidden: concatHidden)
+    }
+
+    @derivative(of: concatenate)
+    public static func vjpConcatenate(
+      _ lhs: Self, 
+      _ rhs: Self
+    ) -> (value: Self, pullback: (TangentVector) -> (TangentVector, TangentVector)) 
+    {
+      let value = concatenate(lhs, rhs)
+      
+      func pullback(_ v: TangentVector) -> (TangentVector, TangentVector) {
+        // Unpack shapes. For axis = -1, the last dimension is concatenated.
+        let cellAxis = value.cell.rank - 1
+        let lhsCellSize = lhs.cell.shape[cellAxis]
+        let rhsCellSize = rhs.cell.shape[cellAxis]
+
+        let hiddenAxis = value.hidden.rank - 1
+        let lhsHiddenSize = lhs.hidden.shape[hiddenAxis]
+        let rhsHiddenSize = rhs.hidden.shape[hiddenAxis]
+
+        // Slice the upstream gradient `v.cell` back into two parts:
+        let lhsCellGrad = v.cell.slice(
+          lowerBounds: Array(repeating: 0, count: cellAxis) + [0],
+          upperBounds: Array(repeating: -1, count: cellAxis) + [lhsCellSize]
+        )
+        let rhsCellGrad = v.cell.slice(
+          lowerBounds: Array(repeating: 0, count: cellAxis) + [lhsCellSize],
+          upperBounds: Array(repeating: -1, count: cellAxis) + [lhsCellSize + rhsCellSize]
+        )
+
+        // Same idea for `v.hidden`:
+        let lhsHiddenGrad = v.hidden.slice(
+          lowerBounds: Array(repeating: 0, count: hiddenAxis) + [0],
+          upperBounds: Array(repeating: -1, count: hiddenAxis) + [lhsHiddenSize]
+        )
+        let rhsHiddenGrad = v.hidden.slice(
+          lowerBounds: Array(repeating: 0, count: hiddenAxis) + [lhsHiddenSize],
+          upperBounds: Array(repeating: -1, count: hiddenAxis) + [lhsHiddenSize + rhsHiddenSize]
+        )
+
+        let lhsGrad = Self(cell: lhsCellGrad, hidden: lhsHiddenGrad)
+        let rhsGrad = Self(cell: rhsCellGrad, hidden: rhsHiddenGrad)
+        return (lhsGrad, rhsGrad)
       }
-      let hidden = concatHidden.withDerivative { [shape = concatHidden.shape] in
-          if $0 == Tensor(0) { $0 = Tensor(zeros: shape) }
-      }
-      return Self(cell: cell, hidden: hidden)
+      return (value, pullback)
     }
 
     /// Adds two values and produces their sum.
-    @differentiable
+    @differentiable(reverse)
     public static func sum(_ lhs: Self, _ rhs: Self) -> Self {
       Self(cell: lhs.cell + rhs.cell, hidden: lhs.hidden + rhs.hidden)
     }
 
     /// Averages two values.
-    @differentiable
+    @differentiable(reverse)
     public static func average(_ lhs: Self, _ rhs: Self) -> Self {
       Self(cell: (lhs.cell + rhs.cell) / 2, hidden: (lhs.hidden + rhs.hidden) / 2)
     }
 
     /// Multiplies two values.
-    @differentiable
+    @differentiable(reverse)
     public static func multiply(_ lhs: Self, _ rhs: Self) -> Self {
       Self(cell: lhs.cell * rhs.cell, hidden: lhs.hidden * rhs.hidden)
     }
 
+    // -- MARK: - stack
     /// Stack two values.
-    @differentiable
+    @differentiable(reverse)
     public static func stack(_ lhs: Self, _ rhs: Self) -> Self {
-      // TODO(TF-1005): Remove workaround for differenting stacking.
+      // Forward pass: stacking along a new axis (0).
       let stackCell = Tensor(stacking: [lhs.cell, rhs.cell])
       let stackHidden = Tensor(stacking: [lhs.hidden, rhs.hidden])
-      let cell = stackCell.withDerivative { [shape = stackCell.shape] in
-          if $0 == Tensor(0) { $0 = Tensor(zeros: shape) }
+      return Self(cell: stackCell, hidden: stackHidden)
+    }
+
+    @derivative(of: stack)
+    public static func vjpStack(
+      _ lhs: Self, 
+      _ rhs: Self
+    ) -> (value: Self, pullback: (TangentVector) -> (TangentVector, TangentVector)) {
+      let value = stack(lhs, rhs)
+      func pullback(_ v: TangentVector) -> (TangentVector, TangentVector) {
+        // For stacking along axis 0, each of v.cell and v.hidden has shape [2, ...].
+        // We unstack them along axis 0.
+        let cellUnstacked = v.cell.unstacked(alongAxis: 0)
+        let hiddenUnstacked = v.hidden.unstacked(alongAxis: 0)
+
+        let lhsGrad = Self(cell: cellUnstacked[0], hidden: hiddenUnstacked[0])
+        let rhsGrad = Self(cell: cellUnstacked[1], hidden: hiddenUnstacked[1])
+        return (lhsGrad, rhsGrad)
       }
-      let hidden = stackHidden.withDerivative { [shape = stackHidden.shape] in
-          if $0 == Tensor(0) { $0 = Tensor(zeros: shape) }
-      }
-      return Self(cell: cell, hidden: hidden)
+      return (value, pullback)
     }
   }
 
@@ -269,7 +323,7 @@ public struct LSTMCell<Scalar: TensorFlowFloatingPoint>: RecurrentLayerCell {
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The hidden state.
-  @differentiable
+  @differentiable(reverse)
   public func callAsFunction(_ input: Input) -> Output {
     let gateInput = input.input.concatenated(with: input.state.hidden, alongAxis: 1)
 
@@ -344,7 +398,7 @@ public struct GRUCell<Scalar: TensorFlowFloatingPoint>: RecurrentLayerCell {
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The hidden state.
-  @differentiable
+  @differentiable(reverse)
   public func callAsFunction(_ input: Input) -> Output {
     let updateGate = sigmoid(
       (matmul(input.input, updateKernel) + updateBias)
@@ -377,7 +431,7 @@ public struct RecurrentLayer<Cell: RecurrentLayerCell>: Layer {
     self.cell = cell()
   }
 
-  @differentiable(wrt: (self, inputs, initialState))
+  @differentiable(reverse)
   public func callAsFunction(
     _ inputs: [Cell.TimeStepInput],
     initialState: Cell.State
@@ -393,7 +447,7 @@ public struct RecurrentLayer<Cell: RecurrentLayerCell>: Layer {
     return timeStepOutputs
   }
 
-  @differentiable(wrt: (self, inputs, initialState))
+  @differentiable(reverse)
   public func call(
     _ inputs: [Cell.TimeStepInput],
     initialState: Cell.State
@@ -445,13 +499,13 @@ public struct RecurrentLayer<Cell: RecurrentLayerCell>: Layer {
     )
   }
 
-  @differentiable
+  @differentiable(reverse)
   public func callAsFunction(_ inputs: [Cell.TimeStepInput]) -> [Cell.TimeStepOutput] {
     let initialState = withoutDerivative(at: cell.zeroState(for: inputs[0]))
     return self(inputs, initialState: initialState)
   }
 
-  @differentiable(wrt: (self, inputs, initialState))
+  @differentiable(reverse)
   public func lastOutput(
     from inputs: [Cell.TimeStepInput],
     initialState: Cell.State
@@ -460,7 +514,7 @@ public struct RecurrentLayer<Cell: RecurrentLayerCell>: Layer {
     return self(inputs, initialState: initialState)[withoutDerivative(at: inputs.count - 1)]
   }
 
-  @differentiable(wrt: (self, inputs))
+  @differentiable(reverse)
   public func lastOutput(from inputs: [Cell.TimeStepInput]) -> Cell.TimeStepOutput {
     precondition(!inputs.isEmpty, "'inputs' must be non-empty.")
     let initialState = withoutDerivative(at: cell.zeroState(for: inputs[0]))
@@ -473,71 +527,160 @@ public struct RecurrentLayer<Cell: RecurrentLayerCell>: Layer {
 /// Used by `BidirectionalRecurrentLayer` as a generic requirement for merge functions.
 public protocol Mergeable: Differentiable, AdditiveArithmetic {
   /// Concatenates two values.
-  @differentiable
+  @differentiable(reverse)
   static func concatenate(_ lhs: Self, _ rhs: Self) -> Self
 
   /// Adds two values and produces their sum.
   ///
   /// - Note: renaming `sum` to `+` results in a compiler crash when conforming `Tensor` to
   /// `Mergeable` (SR-13229).
-  @differentiable
+  @differentiable(reverse)
   static func sum(_ lhs: Self, _ rhs: Self) -> Self
 
   /// Averages two values.
-  @differentiable
+  @differentiable(reverse)
   static func average(_ lhs: Self, _ rhs: Self) -> Self
 
   /// Multiplies two values.
-  @differentiable
+  @differentiable(reverse)
   static func multiply(_ lhs: Self, _ rhs: Self) -> Self
 
   /// Stack two values.
-  @differentiable
+  @differentiable(reverse)
   static func stack(_ lhs: Self, _ rhs: Self) -> Self
 }
 
 extension Tensor: Mergeable where Scalar: TensorFlowFloatingPoint {
   /// Concatenates two tensors along last axis.
-  @differentiable
+  @differentiable(reverse)
+  public static func concatenate(
+    _ lhs: Tensor, 
+    _ rhs: Tensor
+  ) -> Tensor {
+    lhs.concatenated(with: rhs, alongAxis: -1)
+  }
+
+  @derivative(of: concatenate)
+  public static func vjpConcatenate(
+    _ lhs: Tensor, 
+    _ rhs: Tensor
+  ) -> (value: Tensor, pullback: (Tensor) -> (Tensor, Tensor)) {
+    // Forward pass:
+    let value = concatenate(lhs, rhs)
+    
+    // The pullback closure (computes grads for 'lhs' and 'rhs'):
+    func pullback(_ v: Tensor) -> (Tensor, Tensor) {
+      // If you need a "zero gradient" workaround, do it here. For example:
+      // if all(v .== Tensor(0)) { ... } 
+      // Usually, though, you can simply slice `v` back into lhs/rhs shapes.
+
+      // We'll assume concatenation was along the last axis (axis = -1).
+      // That means we can slice `v` accordingly.
+      let axis = value.rank - 1
+      let lhsSize = lhs.shape[axis]
+      let rhsSize = rhs.shape[axis]
+
+      // Slicing `v` to get the portion corresponding to 'lhs'.
+      let lhsGrad = v.slice(
+        lowerBounds: Array(repeating: 0, count: axis) + [0],
+        upperBounds: Array(repeating: -1, count: axis) + [lhsSize]
+      )
+
+      // Slicing `v` to get the portion corresponding to 'rhs'.
+      let rhsGrad = v.slice(
+        lowerBounds: Array(repeating: 0, count: axis) + [lhsSize],
+        upperBounds: Array(repeating: -1, count: axis) + [lhsSize + rhsSize]
+      )
+      return (lhsGrad, rhsGrad)
+    }
+    
+    return (value, pullback)
+  }
+
+  /*
+  @differentiable(reverse)
   public static func concatenate(_ lhs: Tensor, _ rhs: Tensor) -> Tensor {
     // TODO(TF-1005): Remove workaround for differenting concatenated.
     let concat = lhs.concatenated(with: rhs, alongAxis: -1)
-    return concat.withDerivative { [shape = concat.shape] in
-        if $0 == Tensor(0) { $0 = Tensor(zeros: shape) }
+    return concat.withDerivative { (grad: inout Tensor) [shape = concat.shape] in
+        if grad == Tensor(0) { grad = Tensor(zeros: shape) }
     }
   }
+  */
 
   /// Adds two values and produces their sum.
-  @differentiable
+  @differentiable(reverse)
   public static func sum(_ lhs: Tensor, _ rhs: Tensor) -> Tensor {
     lhs + rhs
   }
 
   /// Averages two values.
-  @differentiable
+  @differentiable(reverse)
   public static func average(_ lhs: Tensor, _ rhs: Tensor) -> Tensor {
     (lhs + rhs) / 2
   }
 
   /// Multiplies two values.
-  @differentiable
+  @differentiable(reverse)
   public static func multiply(_ lhs: Tensor, _ rhs: Tensor) -> Tensor {
     lhs * rhs
   }
 
+  /// Stacks two tensors along a new axis at the front.
+  @differentiable(reverse)
+  public static func stack(_ lhs: Tensor<Scalar>, _ rhs: Tensor<Scalar>) -> Tensor<Scalar> {
+      Tensor(stacking: [lhs, rhs])
+  }
+
+  // MARK: - Custom derivative
+  @derivative(of: stack)
+  public static func vjpStack(
+      _ lhs: Tensor<Scalar>,
+      _ rhs: Tensor<Scalar>
+  ) -> (value: Tensor<Scalar>, pullback: (Tensor<Scalar>) -> (Tensor<Scalar>, Tensor<Scalar>)) {
+      // Forward pass:
+      let value = Tensor(stacking: [lhs, rhs])
+      // Pullback closure:
+      func pullback(_ v: Tensor<Scalar>) -> (Tensor<Scalar>, Tensor<Scalar>) {
+          // You typically split `v` back into the shapes of `lhs` and `rhs`.
+          // For a 0th-axis stack, you can "unstack" `v` along axis 0:
+          let grads = v.unstacked(alongAxis: 0)
+          let lhsGrad = grads[0]
+          let rhsGrad = grads[1]
+          return (lhsGrad, rhsGrad)
+      }
+      return (value, pullback)
+  }
+
+  /*
   /// Stack two values.
   @differentiable
+  public static func stack(_ lhs: Tensor<Scalar>, _ rhs: Tensor<Scalar>) -> Tensor<Scalar> {
+  // TODO(TF-1005): Remove workaround for differentiating stacking.
+  let stack = Tensor(stacking: [lhs, rhs])
+  return stack.withDerivative { [shape = stack.shape] (gradient: inout Tensor<Scalar>) in
+    // NOTE: if your shape is multi-dimensional, 'gradient == Tensor(0)'
+    // is an elementwise comparison that yields a Bool tensor, not a single Bool.
+    // You may need a different check if you only want to handle the scalar == 0 case.
+    if gradient == Tensor(0) {
+      gradient = Tensor(zeros: shape)
+    }
+  }
+  }
+  
+  @differentiable(reverse)
   public static func stack(_ lhs: Tensor, _ rhs: Tensor) -> Tensor {
     // TODO(TF-1005): Remove workaround for differenting stacking.
     let stack = Tensor(stacking: [lhs, rhs])
-    return stack.withDerivative { [shape = stack.shape] in
-        if $0 == Tensor(0) { $0 = Tensor(zeros: shape) }
-    }
+    return stack.withDerivative { (grad: inout Tensor) [shape = stack.shape] in
+      if grad == Tensor(0) { grad = Tensor(zeros: shape) }
+      }
   }
+  */
 }
 
 /// Concatenates two values.
-@differentiable
+@differentiable(reverse)
 public func concatenate<T: Mergeable>(
   _ first: T,
   _ second: T
@@ -546,7 +689,7 @@ public func concatenate<T: Mergeable>(
 }
 
 /// Adds two values and produces their sum.
-@differentiable
+@differentiable(reverse)
 public func sum<T: Mergeable>(
   _ first: T,
   _ second: T
@@ -555,7 +698,7 @@ public func sum<T: Mergeable>(
 }
 
 /// Averages two values.
-@differentiable
+@differentiable(reverse)
 public func average<T: Mergeable>(
   _ first: T,
   _ second: T
@@ -564,7 +707,7 @@ public func average<T: Mergeable>(
 }
 
 /// Multiplies two values.
-@differentiable
+@differentiable(reverse)
 public func multiply<T: Mergeable>(
   _ first: T,
   _ second: T
@@ -573,7 +716,7 @@ public func multiply<T: Mergeable>(
 }
 
 /// Stack two values.
-@differentiable
+@differentiable(reverse)
 public func stack<T: Mergeable>(
   _ first: T,
   _ second: T
@@ -585,7 +728,7 @@ public struct BidirectionalRecurrentLayer<Cell: RecurrentLayerCell>: Layer
 where Cell.TimeStepOutput: Mergeable {
   public typealias Input = [Cell.TimeStepInput]
   public typealias Output = [Cell.TimeStepOutput]
-  public typealias MergeFunction = @differentiable (Cell.TimeStepOutput, Cell.TimeStepOutput) -> Cell.TimeStepOutput
+  public typealias MergeFunction = @differentiable(reverse) (Cell.TimeStepOutput, Cell.TimeStepOutput) -> Cell.TimeStepOutput
 
   /// A wrapper around a `@differentiable` merge function.
   ///
@@ -615,7 +758,7 @@ where Cell.TimeStepOutput: Mergeable {
     _mergeFunction = .init(mergeFunction)
   }
 
-  @differentiable
+  @differentiable(reverse)
   public func callAsFunction(
     _ inputs: Input,
     initialForwardLayerState: Cell.State,
@@ -629,7 +772,7 @@ where Cell.TimeStepOutput: Mergeable {
       backwardOutputs.differentiableReversed(), mergeFunction: mergeFunction)
   }
 
-  @differentiable
+  @differentiable(reverse)
   public func callAsFunction(_ inputs: Input) -> Output {
     precondition(!inputs.isEmpty, "'inputs' must be non-empty.")
     let initialForwardLayerState = withoutDerivative(
@@ -643,7 +786,7 @@ where Cell.TimeStepOutput: Mergeable {
     )
   }
 
-  @differentiable
+  @differentiable(reverse)
   public func lastOutput(
     from inputs: Input,
     initialForwardLayerState: Cell.State,
@@ -657,7 +800,7 @@ where Cell.TimeStepOutput: Mergeable {
     )[withoutDerivative(at: inputs.count - 1)]
   }
 
-  @differentiable
+  @differentiable(reverse)
   public func lastOutput(from inputs: Input) -> Cell.TimeStepOutput {
     precondition(!inputs.isEmpty, "'inputs' must be non-empty.")
     return self(inputs)[withoutDerivative(at: inputs.count - 1)]
@@ -695,7 +838,7 @@ fileprivate extension Array where Element: Differentiable {
   ///
   /// This has a custom derivative, which works around the SR-13945 segfault that you would
   /// encounter if you tried to implement this at the callsite using a for loop.
-  @differentiable
+  @differentiable(reverse)
   func differentiableReversed() -> Self {
     .init(self.reversed())
   }
@@ -711,19 +854,19 @@ fileprivate extension Array where Element: Differentiable {
   ///
   /// This has a custom derivative, which works around the SR-13945 segfault that you would
   /// encounter if you tried to implement this at the callsite using a for loop.
-  @differentiable
+  @differentiable(reverse)
   func differentiableMerging(
-    _ other: Self, mergeFunction: @differentiable (Element, Element) -> Element
+    _ other: Self, mergeFunction: @differentiable(reverse) (Element, Element) -> Element
   ) -> Self {
     zip(self, other).map { mergeFunction($0.0, $0.1) }
   }
 
   @derivative(of: differentiableMerging)
   func vjpDifferentiableMerging(
-    _ other: Self, mergeFunction: @differentiable (Element, Element) -> Element
+    _ other: Self, mergeFunction: @differentiable(reverse) (Element, Element) -> Element
   ) -> (value: Self, pullback: (TangentVector) -> (TangentVector, TangentVector)) {
     let valuesWithPullbacks = zip(self, other).map {
-      valueWithPullback(at: $0.0, $0.1, in: mergeFunction)
+      valueWithPullback(at: $0.0, $0.1, of: mergeFunction)
     }
     let pullbacks = valuesWithPullbacks.map { $0.pullback }
     return (

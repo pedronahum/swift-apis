@@ -28,11 +28,16 @@ public struct UpSampling1D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer 
     self.size = size
   }
 
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
+
   /// Returns the output obtained from applying the layer to the given input.
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     let shape = input.shape
     let (batchSize, timesteps, channels) = (shape[0], shape[1], shape[2])
@@ -56,11 +61,16 @@ public struct UpSampling2D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer 
     self.size = size
   }
 
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
+
   /// Returns the output obtained from applying the layer to the given input.
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     let device = input.device
     let shape = input.shape
@@ -85,10 +95,15 @@ public struct UpSampling3D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer 
     self.size = size
   }
 
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
+
   /// Repeats the elements of a tensor along an axis, like `np.repeat`.
   /// Function adapted from `def repeat_elements`:
   /// https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/backend.py
-  @differentiable
+  @differentiable(reverse)
   private func repeatingElements(
     _ input: Tensor<Scalar>, alongAxis axis: Int, count: Int
   ) -> Tensor<Scalar> {
@@ -123,7 +138,7 @@ public struct UpSampling3D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer 
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     var result = repeatingElements(input, alongAxis: 1, count: size)
     result = repeatingElements(result, alongAxis: 2, count: size)

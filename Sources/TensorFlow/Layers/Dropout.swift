@@ -20,7 +20,7 @@ import _Differentiation
 
 extension Tensor where Scalar: TensorFlowFloatingPoint {
   /// Computes dropout given a probability.
-  @differentiable(wrt: self where Scalar: Differentiable)
+  @differentiable(reverse)
   fileprivate func droppingOut(probability: Double) -> Tensor {
     let noise = Tensor(randomUniform: shape, on: device)
     let keepMask = noise .>= Scalar(probability)
@@ -36,6 +36,11 @@ extension Tensor where Scalar: TensorFlowFloatingPoint {
 @frozen
 public struct Dropout<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
+
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
 
   @noDerivative public let probability: Double
 
@@ -54,7 +59,7 @@ public struct Dropout<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     switch Context.local.learningPhase {
     case .training:
@@ -71,6 +76,11 @@ public struct Dropout<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
 public struct GaussianNoise<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
 
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
+
   @noDerivative public let standardDeviation: Tensor<Scalar>
 
   /// Creates a Gaussian noise layer
@@ -81,7 +91,7 @@ public struct GaussianNoise<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer
   }
 
   /// Returns a tensor obtained by adding noise to `input`
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     switch Context.local.learningPhase {
     case .training:
@@ -102,6 +112,11 @@ public struct GaussianNoise<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer
 public struct GaussianDropout<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
 
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
+
   @noDerivative public let probability: Scalar
   @noDerivative public let standardDeviation: Scalar
 
@@ -118,7 +133,7 @@ public struct GaussianDropout<Scalar: TensorFlowFloatingPoint>: ParameterlessLay
   }
 
   /// Applies multiplicative 1-centered Gaussian noise to the input during training only.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     switch Context.local.learningPhase {
     case .training:
@@ -144,6 +159,11 @@ public struct GaussianDropout<Scalar: TensorFlowFloatingPoint>: ParameterlessLay
 public struct AlphaDropout<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
 
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
+
   @noDerivative public let probability: Double
 
   /// Initializes an `AlphaDropout` layer with a configurable `probability`.
@@ -158,7 +178,7 @@ public struct AlphaDropout<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer 
   }
 
   /// Adds noise to `input` during training, and is a no-op during inference.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     switch Context.local.learningPhase {
     case .training:

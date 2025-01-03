@@ -19,6 +19,11 @@ import _Differentiation
 public struct MaxPool1D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
 
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
+
   /// The size of the sliding reduction window for pooling.
   @noDerivative public let poolSize: Int
   /// The stride of the sliding window for temporal dimension.
@@ -44,7 +49,7 @@ public struct MaxPool1D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     maxPool2D(
       input.expandingShape(at: 1),
@@ -59,6 +64,11 @@ public struct MaxPool1D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
 @frozen
 public struct MaxPool2D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
+
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
 
   /// The size of the sliding reduction window for pooling.
   @noDerivative public let poolSize: (Int, Int, Int, Int)
@@ -85,7 +95,7 @@ public struct MaxPool2D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     maxPool2D(input, filterSize: poolSize, strides: strides, padding: padding)
   }
@@ -110,6 +120,11 @@ extension MaxPool2D {
 @frozen
 public struct MaxPool3D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
+
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
 
   /// The size of the sliding reduction window for pooling.
   @noDerivative public let poolSize: (Int, Int, Int, Int, Int)
@@ -142,7 +157,7 @@ public struct MaxPool3D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     maxPool3D(input, filterSize: poolSize, strides: strides, padding: padding)
   }
@@ -179,6 +194,11 @@ extension MaxPool3D {
 public struct AvgPool1D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
 
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
+
   /// The size of the sliding reduction window for pooling.
   @noDerivative public let poolSize: Int
   /// The stride of the sliding window for temporal dimension.
@@ -204,7 +224,7 @@ public struct AvgPool1D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     avgPool2D(
       input.expandingShape(at: 1),
@@ -219,6 +239,11 @@ public struct AvgPool1D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
 @frozen
 public struct AvgPool2D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
+
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
 
   /// The size of the sliding reduction window for pooling.
   @noDerivative public let poolSize: (Int, Int, Int, Int)
@@ -245,7 +270,7 @@ public struct AvgPool2D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     avgPool2D(input, filterSize: poolSize, strides: strides, padding: padding)
   }
@@ -270,6 +295,11 @@ extension AvgPool2D {
 @frozen
 public struct AvgPool3D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
+
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
 
   /// The size of the sliding reduction window for pooling.
   @noDerivative public let poolSize: (Int, Int, Int, Int, Int)
@@ -302,7 +332,7 @@ public struct AvgPool3D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     avgPool3D(input, filterSize: poolSize, strides: strides, padding: padding)
   }
@@ -342,11 +372,16 @@ public struct GlobalAvgPool1D<Scalar: TensorFlowFloatingPoint>: ParameterlessLay
   /// Creates a global average pooling layer.
   public init() {}
 
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
+
   /// Returns the output obtained from applying the layer to the given input.
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     precondition(input.rank == 3, "The rank of the input must be 3.")
     return input.mean(squeezingAxes: 1)
@@ -361,11 +396,16 @@ public struct GlobalAvgPool2D<Scalar: TensorFlowFloatingPoint>: ParameterlessLay
   /// Creates a global average pooling layer.
   public init() {}
 
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
+
   /// Returns the output obtained from applying the layer to the given input.
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     precondition(input.rank == 4, "The rank of the input must be 4.")
     return input.mean(squeezingAxes: [1, 2])
@@ -377,6 +417,11 @@ public struct GlobalAvgPool2D<Scalar: TensorFlowFloatingPoint>: ParameterlessLay
 public struct GlobalAvgPool3D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
 
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
+
   /// Creates a global average pooling layer.
   public init() {}
 
@@ -384,7 +429,7 @@ public struct GlobalAvgPool3D<Scalar: TensorFlowFloatingPoint>: ParameterlessLay
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     precondition(input.rank == 5, "The rank of the input must be 5.")
     return input.mean(squeezingAxes: [1, 2, 3])
@@ -396,6 +441,13 @@ public struct GlobalAvgPool3D<Scalar: TensorFlowFloatingPoint>: ParameterlessLay
 public struct GlobalMaxPool1D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
 
+
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
+
+
   /// Creates a global max pooling layer.
   public init() {}
 
@@ -406,7 +458,7 @@ public struct GlobalMaxPool1D<Scalar: TensorFlowFloatingPoint>: ParameterlessLay
   ///   - context: The contextual information for the layer application, e.g. the current learning
   ///     phase.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     precondition(input.rank == 3, "The rank of the input must be 3.")
     return input.max(squeezingAxes: 1)
@@ -418,6 +470,11 @@ public struct GlobalMaxPool1D<Scalar: TensorFlowFloatingPoint>: ParameterlessLay
 public struct GlobalMaxPool2D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
 
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
+
   /// Creates a global max pooling layer.
   public init() {}
 
@@ -425,7 +482,7 @@ public struct GlobalMaxPool2D<Scalar: TensorFlowFloatingPoint>: ParameterlessLay
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     precondition(input.rank == 4, "The rank of the input must be 4.")
     return input.max(squeezingAxes: [1, 2])
@@ -437,6 +494,11 @@ public struct GlobalMaxPool2D<Scalar: TensorFlowFloatingPoint>: ParameterlessLay
 public struct GlobalMaxPool3D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
 
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
+
   /// Creates a global max pooling layer.
   public init() {}
 
@@ -444,7 +506,7 @@ public struct GlobalMaxPool3D<Scalar: TensorFlowFloatingPoint>: ParameterlessLay
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     precondition(input.rank == 5, "The rank of the input must be 5.")
     return input.max(squeezingAxes: [1, 2, 3])
@@ -456,6 +518,11 @@ public struct GlobalMaxPool3D<Scalar: TensorFlowFloatingPoint>: ParameterlessLay
 @frozen
 public struct FractionalMaxPool2D<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
+
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
 
   /// Pooling ratios for each dimension of input of shape (batch, height, width, channels).
   /// Currently pooling in only height and width is supported.
@@ -494,7 +561,7 @@ public struct FractionalMaxPool2D<Scalar: TensorFlowFloatingPoint>: Parameterles
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     fractionalMaxPool2D(
       input,

@@ -58,7 +58,7 @@ where
     self.layer2 = layer2
   }
 
-  @differentiable(wrt: self)
+  @differentiable(reverse)
   public func callAsFunction(_ input: Layer1.Input) -> Layer2.Output {
     layer2(layer1(input))
   }
@@ -69,7 +69,7 @@ where
 }
 
 extension Sequential: Layer where Layer1: Layer {
-  @differentiable
+  @differentiable(reverse)
   public func callAsFunction(_ input: Layer1.Input) -> Layer2.Output {
     layer2(layer1(input))
   }

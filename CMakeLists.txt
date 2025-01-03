@@ -71,7 +71,7 @@ if(ENABLE_SWIFT_NUMERICS)
 
   ExternalProject_Add(swift-numerics
     GIT_REPOSITORY
-      git://github.com/apple/swift-numerics
+      https://github.com/apple/swift-numerics
     GIT_TAG
       main
     CMAKE_ARGS
@@ -116,7 +116,7 @@ if(ENABLE_PYTHON_SUPPORT)
 
   ExternalProject_Add(python-kit
     GIT_REPOSITORY
-      git://github.com/pvieito/PythonKit
+      https://github.com/pvieito/PythonKit
     GIT_TAG
       master
     CMAKE_ARGS
@@ -165,7 +165,7 @@ if(NOT X10_FOUND AND NOT USE_BUNDLED_X10)
 
   ExternalProject_Add(libtensorflow
     GIT_REPOSITORY
-      git://github.com/tensorflow/tensorflow
+      https://github.com/tensorflow/tensorflow
     GIT_TAG
       r2.4
     UPDATE_DISCONNECTED
@@ -189,7 +189,7 @@ if(NOT X10_FOUND AND NOT USE_BUNDLED_X10)
       COMMAND
         rm -rf <SOURCE_DIR>/bazel-bin # ${CMAKE_COMMAND} -E rm -Rrf <SOURCE_DIR>/bazel-bin
       COMMAND
-        bazel build ${VISIBILITY_FLAGS} -c opt --define framework_shared_object=false //tensorflow/compiler/tf2xla/xla_tensor:x10 --nocheck_visibility
+        bazel build --jobs=4 --local_cpu_resources=4 ${VISIBILITY_FLAGS} -c opt --define framework_shared_object=false //tensorflow/compiler/tf2xla/xla_tensor:x10 --nocheck_visibility
       COMMAND
         bazel shutdown
     INSTALL_COMMAND

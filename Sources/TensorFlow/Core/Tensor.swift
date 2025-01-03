@@ -132,7 +132,7 @@ extension Tensor {
   /// Reshape to scalar.
   /// - Precondition: The tensor has exactly one scalar.
   @inlinable
-  @differentiable(where Scalar: TensorFlowFloatingPoint)
+  @differentiable(reverse where Scalar: TensorFlowFloatingPoint)
   public func scalarized() -> Scalar {
     precondition(
       shape.contiguousSize == 1,
@@ -174,7 +174,7 @@ extension Tensor {
     return handle.makeHostCopy()
   }
 
-  @differentiable(where Scalar: TensorFlowFloatingPoint)
+  @differentiable(reverse where Scalar: TensorFlowFloatingPoint)
   public var scalars: [Scalar] {
     if handle.backend == .XLA {
       let (storage, _) = xlaTensor.fetchTensorValues(Scalar.self)
@@ -203,7 +203,7 @@ extension Tensor where Scalar: TensorFlowFloatingPoint {
 
 extension Tensor {
   /// Creates a 0-D tensor from a scalar value.
-  @differentiable(where Scalar: TensorFlowFloatingPoint)
+  @differentiable(reverse where Scalar: TensorFlowFloatingPoint)
   public init(_ value: Scalar, on device: Device = .default) {
     switch device.backend {
     case .XLA:
@@ -227,7 +227,7 @@ extension Tensor where Scalar: TensorFlowFloatingPoint {
 extension Tensor {
   /// Creates a 1D tensor from scalars.
   @inlinable
-  @differentiable(where Scalar: TensorFlowFloatingPoint)
+  @differentiable(reverse where Scalar: TensorFlowFloatingPoint)
   public init(_ scalars: [Scalar], on device: Device = .default) {
     self.init(shape: [scalars.count], scalars: scalars, on: device)
   }
@@ -247,7 +247,7 @@ extension Tensor {
   ///   - scalars: The scalar contents of the tensor.
   /// - Precondition: The product of the dimensions of the shape must equal the number of scalars.
   @inlinable
-  @differentiable(where Scalar: TensorFlowFloatingPoint)
+  @differentiable(reverse where Scalar: TensorFlowFloatingPoint)
   public init(shape: TensorShape, scalars: [Scalar], on device: Device = .default) {
     precondition(
       shape.contiguousSize == scalars.count,
@@ -628,7 +628,7 @@ extension Tensor: AdditiveArithmetic where Scalar: Numeric {
   /// Adds two tensors and produces their sum.
   /// - Note: `+` supports broadcasting.
   @inlinable
-  @differentiable(where Scalar: TensorFlowFloatingPoint)
+  @differentiable(reverse where Scalar: TensorFlowFloatingPoint)
   public static func + (lhs: Tensor, rhs: Tensor) -> Tensor {
     if lhs._isScalarZero {
       return rhs
@@ -641,7 +641,7 @@ extension Tensor: AdditiveArithmetic where Scalar: Numeric {
   /// Subtracts one tensor from another and produces their difference.
   /// - Note: `-` supports broadcasting.
   @inlinable
-  @differentiable(where Scalar: TensorFlowFloatingPoint)
+  @differentiable(reverse where Scalar: TensorFlowFloatingPoint)
   public static func - (lhs: Tensor, rhs: Tensor) -> Tensor {
     if rhs._isScalarZero {
       return lhs
@@ -745,7 +745,7 @@ public protocol TensorProtocol {
 public protocol DifferentiableTensorProtocol:
   TensorProtocol & Differentiable & EuclideanDifferentiable
 where Scalar: TensorFlowFloatingPoint {
-  @differentiable(wrt: self)
+  @differentiable(reverse)
   func annotate(_ annotation: String) -> Self
 }
 
@@ -773,7 +773,7 @@ where Scalar: TensorFlowFloatingPoint {
   ///
   /// - Parameter annotation: The annotation to be added.
   /// - Returns: The annotated tensor.
-  @differentiable(wrt: self)
+  @differentiable(reverse)
   public func annotate(_ annotation: String) -> Tensor<Scalar> {
     switch handle.backend {
     case .XLA:
@@ -790,4 +790,25 @@ where Scalar: TensorFlowFloatingPoint {
   ) {
     (annotate(annotation), { $0 })
   }
+}
+
+//===------------------------------------------------------------------------------------------===//
+// Stop Gradient extension
+//===---
+
+extension Tensor where Scalar: TensorFlowFloatingPoint {
+    /// Returns `self` in the forward pass, but has zero gradient in the backward pass,
+    /// effectively "stopping" gradients.
+    @differentiable(reverse)
+    public func stoppedGradient() -> Self {
+        self
+    }
+
+    /// The custom derivative (VJP) for `stoppedGradient()`.
+    @derivative(of: stoppedGradient)
+    public func vjpStoppedGradient() -> (value: Self, pullback: (Self) -> Self) {
+        // Forward pass: return `self`.
+        // Pullback: always return a zero tensor, blocking gradient flow.
+        return (self, { _ in Self(zerosLike: self) })
+    }
 }

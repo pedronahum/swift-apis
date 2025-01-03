@@ -21,6 +21,11 @@ import _Differentiation
 public struct Flatten<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
 
+  /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
+
   /// Creates a flatten layer.
   public init() {}
 
@@ -28,7 +33,7 @@ public struct Flatten<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     let batchSize = input.shape[0]
     let remaining = input.shape[1..<input.rank].contiguousSize
@@ -40,6 +45,11 @@ public struct Flatten<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
 @frozen
 public struct Reshape<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
+
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
 
   /// The target shape.
   @noDerivative public var shape: Tensor<Int32>
@@ -66,7 +76,7 @@ public struct Reshape<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     return input.reshaped(toShape: shape)
   }
@@ -75,7 +85,7 @@ public struct Reshape<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
 /// A layer that encloses a custom differentiable function.
 public struct Function<Input: Differentiable, Output: Differentiable>: ParameterlessLayer {
   public typealias TangentVector = EmptyTangentVector
-  public typealias Body = @differentiable (Input) -> Output
+  public typealias Body = @differentiable(reverse) (Input) -> Output
 
   @noDerivative public let body: Body
 
@@ -83,7 +93,12 @@ public struct Function<Input: Differentiable, Output: Differentiable>: Parameter
     self.body = body
   }
 
-  @differentiable
+   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
+  public mutating func move(by offset: EmptyTangentVector) {
+    // No parameters to update, so do nothing.
+  }
+
+  @differentiable(reverse)
   public func callAsFunction(_ input: Input) -> Output {
     body(input)
   }

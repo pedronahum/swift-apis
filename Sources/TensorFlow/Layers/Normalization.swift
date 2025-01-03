@@ -23,7 +23,7 @@ import _Differentiation
 ///   - offset: The tensor to be added to normalized tensor.
 ///   - scale: The tensor to be applied to normalized tensor.
 ///   - varianceEpsilon: The small number to avoid dividing by 0.
-@differentiable(wrt: (input, mean, variance, offset, scale))
+@differentiable(reverse)
 private func normalize<Scalar: TensorFlowFloatingPoint>(
   _ input: Tensor<Scalar>,
   mean: Tensor<Scalar>,
@@ -98,7 +98,7 @@ public struct BatchNorm<Scalar: TensorFlowFloatingPoint>: Layer {
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     let positiveAxis = (input.rank + axis) % input.rank
     precondition(
@@ -123,44 +123,76 @@ public struct BatchNorm<Scalar: TensorFlowFloatingPoint>: Layer {
   private func doTraining(
     _ input: Tensor<Scalar>, offset: Tensor<Scalar>, scale: Tensor<Scalar>, axis: Int
   ) -> Tensor<Scalar> {
+    // 1) Figure out the axes to reduce.
     var normalizedAxes = Array(0..<input.rank)
     normalizedAxes.remove(at: axis)
+
+    // 2) Compute moments along these axes.
     let moments = input.moments(alongAxes: normalizedAxes)
+
+    // 3) Decay factor as a Tensor. 'momentum' presumably a stored property.
     let decayMomentum = Tensor(1 - momentum, on: input.device)
-    let isReducedPrecision = withoutDerivative(at: input) { $0.isReducedPrecision }
+
+    // 4) 'isReducedPrecision' is just a Bool property; no gradient needed.
+    let isReducedPrecision = input.isReducedPrecision
+
+    // 5) Possibly cast moments to full precision if needed.
     var momentsMean = moments.mean
     var momentsVariance = moments.variance
     if isReducedPrecision {
       momentsMean = momentsMean.toFullPrecision
       momentsVariance = momentsVariance.toFullPrecision
     }
+
+    // 6) Update running stats (runningMean, runningVariance presumably some references).
     runningMean.value += (momentsMean - runningMean.value) * decayMomentum
     runningVariance.value += (momentsVariance - runningVariance.value) * decayMomentum
-    // Note: `withoutDerivative(at:)` is currently needed in the following to prevent the resulting
-    // tensor for `epsilon` from being scalarized on the backwards pass, breaking X10 traces.
-    let eps = withoutDerivative(at: input) { Tensor(epsilon, deviceAndPrecisionLike: $0) }
+
+    // 7) 'eps' is a small constant, but we need to block gradient to avoid
+    //    X10 scalarization issues. So we call 'stopGradient'.
+    let eps = Tensor<Scalar>(epsilon, deviceAndPrecisionLike: input).stoppedGradient()
+    
+
+    // 8) Finally, normalize the input.
     return normalize(
       input,
-      mean: moments.mean, variance: moments.variance,
-      offset: offset, scale: scale,
-      varianceEpsilon: eps)
+      mean: moments.mean,
+      variance: moments.variance,
+      offset: offset,
+      scale: scale,
+      varianceEpsilon: eps
+    )
   }
 
+
   private func doInference(
-    _ input: Tensor<Scalar>, offset: Tensor<Scalar>, scale: Tensor<Scalar>
+    _ input: Tensor<Scalar>,
+    offset: Tensor<Scalar>,
+    scale: Tensor<Scalar>
   ) -> Tensor<Scalar> {
-    let isReducedPrecision = withoutDerivative(at: input) { $0.isReducedPrecision }
-    let runningVarianceValue =
-      isReducedPrecision ? runningVariance.value.toReducedPrecision : runningVariance.value
-    let runningMeanValue =
-      isReducedPrecision ? runningMean.value.toReducedPrecision : runningMean.value
-    let eps = withoutDerivative(at: input) { Tensor(epsilon, deviceAndPrecisionLike: $0) }
+    // We can read `isReducedPrecision` directly from the tensor without `withoutDerivative`.
+    let isReducedPrecision = input.isReducedPrecision
+    let runningVarianceValue = isReducedPrecision
+      ? runningVariance.value.toReducedPrecision
+      : runningVariance.value
+    let runningMeanValue = isReducedPrecision
+      ? runningMean.value.toReducedPrecision
+      : runningMean.value
+
+    // If you want to block the gradient for `eps` to avoid X10 scalarization issues,
+    // call a custom `stopGradient` function (defined in the same extension or elsewhere).
+    let eps = Tensor<Scalar>(epsilon, deviceAndPrecisionLike: input).stoppedGradient()
+
     return normalize(
       input,
-      mean: runningMeanValue, variance: runningVarianceValue,
-      offset: offset, scale: scale,
-      varianceEpsilon: eps)
+      mean: runningMeanValue,
+      variance: runningVarianceValue,
+      offset: offset,
+      scale: scale,
+      varianceEpsilon: eps
+    )
   }
+
 
   /// Creates a batch normalization layer.
   ///
@@ -240,23 +272,34 @@ public struct LayerNorm<Scalar: TensorFlowFloatingPoint>: Layer {
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
-    // Note: `withoutDerivative(at:)` is currently needed in the following to prevent the resulting
-    // tensor for `epsilon` from being scalarized on the backwards pass, breaking X10 traces.
-    let epsilon = withoutDerivative(at: input) { Tensor(self.epsilon, deviceAndPrecisionLike: $0) }
+    // If you need to block gradients for `epsilon`, call `stopGradient`.
+    // (See below for the definition of `stopGradient(_:)` if not already defined.)
+    let epsilon = Tensor<Scalar>(self.epsilon, deviceAndPrecisionLike: input).stoppedGradient()
+    
+
     let positiveAxis = (input.rank + axis) % input.rank
     precondition(
       input.shape[positiveAxis] == offset.shape[0],
-      "The number of features of the input and the offset doesn't match.")
+      "The number of features of the input and the offset doesn't match."
+    )
+
+    // Reshape 'offset' and 'scale' for broadcasting along 'positiveAxis'.
     var broadcastShape = TensorShape(Array(repeating: 1, count: input.rank))
     broadcastShape[positiveAxis] = input.shape[positiveAxis]
     let offset = self.offset.reshaped(to: broadcastShape)
     let scale = self.scale.reshaped(to: broadcastShape)
+
+    // Compute mean and variance along the specified axis.
     let moments = input.moments(alongAxes: positiveAxis)
+    // Normalize with variance epsilon, multiplied by 'scale'.
     let inv = rsqrt(moments.variance + epsilon) * scale
+
+    // The final batch-normalization formula.
     return (input - moments.mean) * inv + offset
   }
+
 }
 
 /// A layer that applies group normalization over a mini-batch of inputs.
@@ -341,13 +384,16 @@ public struct GroupNorm<Scalar: TensorFlowFloatingPoint>: Layer {
   /// - Returns: The output.
   /// - Precondition: The axis cannot be batch axis.
   /// - Precondition: The numbers of features of the input and the offset must be same.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     let positiveAxis = (input.rank + axis) % input.rank
     precondition(positiveAxis != 0, "The axis cannot be batch axis.")
     precondition(
       input.shape[positiveAxis] == offset.shape[0],
-      "The numbers of features of the input and the offset must be same.")
+      "The numbers of features of the input and the offset must be the same."
+    )
+
+    // Prepare offset and scale for broadcasting along `groupCount`.
     var offset = self.offset
     var scale = self.scale
     var broadcastShape = TensorShape([Int](repeating: 1, count: input.rank + 1))
@@ -356,21 +402,30 @@ public struct GroupNorm<Scalar: TensorFlowFloatingPoint>: Layer {
     offset = offset.reshaped(to: broadcastShape)
     scale = scale.reshaped(to: broadcastShape)
 
+    // Reshape input so that its channel dimension is split into [groupCount, remainder].
     var groupShape = input.shape
     groupShape[positiveAxis] /= groupCount
     groupShape.insert(groupCount, at: positiveAxis)
     let grouped = input.reshaped(to: groupShape)
+
+    // We will compute mean and variance along all axes except the newly inserted one
+    // (plus the leading axis for the batch).
     var normalizedAxes = Array(1..<grouped.rank)
     normalizedAxes.remove(at: positiveAxis - 1)
     let moments = grouped.moments(alongAxes: normalizedAxes)
-    // Note: `withoutDerivative(at:)` is currently needed in the following to prevent the resulting
-    // tensor for `epsilon` from being scalarized on the backwards pass, breaking X10 traces.
-    let eps = withoutDerivative(at: input) { Tensor(self.epsilon, deviceAndPrecisionLike: $0) }
+
+    // Replace `withoutDerivative` with `stoppedGradient()`.
+    let eps = Tensor<Scalar>(self.epsilon, deviceAndPrecisionLike: input).stoppedGradient()
+
+    // Normalize.
     let normalized = normalize(
       grouped,
-      mean: moments.mean, variance: moments.variance,
-      offset: offset, scale: scale,
-      varianceEpsilon: eps)
+      mean: moments.mean, 
+      variance: moments.variance,
+      offset: offset,
+      scale: scale,
+      varianceEpsilon: eps
+    )
     return normalized.reshaped(to: input.shape)
   }
 }
@@ -447,7 +502,7 @@ public struct InstanceNorm<Scalar: TensorFlowFloatingPoint>: Layer {
   ///
   /// - Parameter input: The input to the layer.
   /// - Returns: The output.
-  @differentiable
+  @differentiable(reverse)
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     delegate(input)
   }

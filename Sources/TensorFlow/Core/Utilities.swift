@@ -15,11 +15,11 @@
 import CTensorFlow
 
 #if os(macOS) || os(iOS) || os(watchOS) || os(tvOS)
-  import Darwin
+import Darwin
 #elseif os(Windows)
-  import CRT
+import CRT
 #else
-  import Glibc
+import Glibc
 #endif
 
 //===------------------------------------------------------------------------------------------===//
@@ -108,8 +108,8 @@ internal typealias CTFETraceContext = OpaquePointer
 //===------------------------------------------------------------------------------------------===//
 
 #if os(macOS) || os(iOS) || os(watchOS) || os(tvOS)
-  @usableFromInline internal let stderr = __stderrp
-  @usableFromInline internal let stdout = __stdoutp
+@usableFromInline internal let stderr = __stderrp
+@usableFromInline internal let stdout = __stdoutp
 #endif
 
 /// Log to standard error.
@@ -146,9 +146,19 @@ internal func debugLog(
 /// Given the address of a `TF_Buffer` and a file path, write the buffer's contents to the file.
 @usableFromInline
 internal func writeContents(of buffer: UnsafePointer<TF_Buffer>, toFile path: String) {
-  let fp = fopen(path, "w+")
-  fwrite(buffer.pointee.data, /*size*/ 1, /*count*/ buffer.pointee.length, fp)
-  fclose(fp)
+  // fopen returns an Optional pointer, which is nil if the file can't be opened.
+  guard let fp = fopen(path, "w+") else {
+    fatalError("Could not open file at path '\(path)' for writing.")
+  }
+  // Use `defer` to ensure the file is closed if subsequent operations fail.
+  defer { fclose(fp) }
+
+  fwrite(
+    buffer.pointee.data,
+    /*size*/ 1,
+    /*count*/ buffer.pointee.length,
+    fp
+  )
 }
 
 //===------------------------------------------------------------------------------------------===//

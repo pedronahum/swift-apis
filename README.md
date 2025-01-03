@@ -1,3 +1,28 @@
+
+```bash
+
+# Steps for Ubuntu 24.04 (without CUDA support)
+
+# Clone updated repository
+git clone https://github.com/pedronahum/swift-apis.git
+
+# Install older GCC if needed, e.g.:
+sudo apt-get install g++-9
+
+# Install Swift 6.2 DEV (required for autodifferentation)
+
+# Required to compile tensorflow 2.4
+export CC=/usr/bin/gcc-9
+export CXX=/usr/bin/g++-9
+
+rm -rf out
+cmake -B out -G Ninja \
+  -S swift-apis \
+  -D CMAKE_BUILD_TYPE=Release \
+  -D ENABLE_PYTHON_SUPPORT=OFF
+cmake --build out
+```
+
 # Swift for TensorFlow Deep Learning Library
 
 Get a taste of *protocol-oriented differentiable programming*.

@@ -22,90 +22,58 @@
 
 extension Array: ElementaryFunctions where Element: ElementaryFunctions {
   /// The square root of `x`.
-  ///
-  /// For real types, if `x` is negative the result is `.nan`. For complex
-  /// types there is a branch cut on the negative real axis.
   public static func sqrt(_ x: Self) -> Self { x.map(Element.sqrt) }
-
   /// The cosine of `x`, interpreted as an angle in radians.
   public static func cos(_ x: Self) -> Self { x.map(Element.cos) }
-
   /// The sine of `x`, interpreted as an angle in radians.
   public static func sin(_ x: Self) -> Self { x.map(Element.sin) }
-
   /// The tangent of `x`, interpreted as an angle in radians.
   public static func tan(_ x: Self) -> Self { x.map(Element.tan) }
-
   /// The inverse cosine of `x` in radians.
   public static func acos(_ x: Self) -> Self { x.map(Element.acos) }
-
   /// The inverse sine of `x` in radians.
   public static func asin(_ x: Self) -> Self { x.map(Element.asin) }
-
   /// The inverse tangent of `x` in radians.
   public static func atan(_ x: Self) -> Self { x.map(Element.atan) }
-
   /// The hyperbolic cosine of `x`.
   public static func cosh(_ x: Self) -> Self { x.map(Element.cosh) }
-
   /// The hyperbolic sine of `x`.
   public static func sinh(_ x: Self) -> Self { x.map(Element.sinh) }
-
   /// The hyperbolic tangent of `x`.
   public static func tanh(_ x: Self) -> Self { x.map(Element.tanh) }
-
   /// The inverse hyperbolic cosine of `x`.
   public static func acosh(_ x: Self) -> Self { x.map(Element.acosh) }
-
   /// The inverse hyperbolic sine of `x`.
   public static func asinh(_ x: Self) -> Self { x.map(Element.asinh) }
-
   /// The inverse hyperbolic tangent of `x`.
   public static func atanh(_ x: Self) -> Self { x.map(Element.atanh) }
-
   /// The exponential function applied to `x`, or `e**x`.
   public static func exp(_ x: Self) -> Self { x.map(Element.exp) }
-
   /// Two raised to to power `x`.
   public static func exp2(_ x: Self) -> Self { x.map(Element.exp2) }
-
   /// Ten raised to to power `x`.
   public static func exp10(_ x: Self) -> Self { x.map(Element.exp10) }
-
   /// `exp(x) - 1` evaluated so as to preserve accuracy close to zero.
   public static func expm1(_ x: Self) -> Self { x.map(Element.expm1) }
-
   /// The natural logarithm of `x`.
   public static func log(_ x: Self) -> Self { x.map(Element.log) }
-
   /// The base-two logarithm of `x`.
   public static func log2(_ x: Self) -> Self { x.map(Element.log2) }
-
   /// The base-ten logarithm of `x`.
   public static func log10(_ x: Self) -> Self { x.map(Element.log10) }
-
   /// `log(1 + x)` evaluated so as to preserve accuracy close to zero.
   public static func log1p(_ x: Self) -> Self { x.map(Element.log1p) }
 
   /// `exp(y log(x))` computed without loss of intermediate precision.
-  ///
-  /// For real types, if `x` is negative the result is NaN, even if `y` has
-  /// an integral value. For complex types, there is a branch cut on the
-  /// negative real axis.
   public static func pow(_ x: Self, _ y: Self) -> Self {
     precondition(x.count == y.count)
     return zip(x, y).map(Element.pow)
   }
 
   /// `x` raised to the `n`th power.
-  ///
-  /// The product of `n` copies of `x`.
   public static func pow(_ x: Self, _ n: Int) -> Self { x.map { Element.pow($0, n) } }
 
   /// The `n`th root of `x`.
-  ///
-  /// For real types, if `x` is negative and `n` is even, the result is NaN.
-  /// For complex types, there is a branch cut along the negative real axis.
   public static func root(_ x: Self, _ n: Int) -> Self { x.map { Element.root($0, n) } }
 }
 #endif
@@ -115,47 +83,31 @@ extension Array: ElementaryFunctions where Element: ElementaryFunctions {
 extension Array.DifferentiableView: ElementaryFunctions
 where Element: Differentiable & ElementaryFunctions {
   /// The square root of `x`.
-  ///
-  /// For real types, if `x` is negative the result is `.nan`. For complex
-  /// types there is a branch cut on the negative real axis.
   public static func sqrt(_ x: Self) -> Self { .init(x.map(Element.sqrt)) }
-
   /// The cosine of `x`, interpreted as an angle in radians.
   public static func cos(_ x: Self) -> Self { .init(x.map(Element.cos)) }
-
   /// The sine of `x`, interpreted as an angle in radians.
   public static func sin(_ x: Self) -> Self { .init(x.map(Element.sin)) }
-
   /// The tangent of `x`, interpreted as an angle in radians.
   public static func tan(_ x: Self) -> Self { .init(x.map(Element.tan)) }
-
   /// The inverse cosine of `x` in radians.
   public static func acos(_ x: Self) -> Self { .init(x.map(Element.acos)) }
-
   /// The inverse sine of `x` in radians.
   public static func asin(_ x: Self) -> Self { .init(x.map(Element.asin)) }
-
   /// The inverse tangent of `x` in radians.
   public static func atan(_ x: Self) -> Self { .init(x.map(Element.atan)) }
-
   /// The hyperbolic cosine of `x`.
   public static func cosh(_ x: Self) -> Self { .init(x.map(Element.cosh)) }
-
   /// The hyperbolic sine of `x`.
   public static func sinh(_ x: Self) -> Self { .init(x.map(Element.sinh)) }
-
   /// The hyperbolic tangent of `x`.
   public static func tanh(_ x: Self) -> Self { .init(x.map(Element.tanh)) }
-
   /// The inverse hyperbolic cosine of `x`.
   public static func acosh(_ x: Self) -> Self { .init(x.map(Element.acosh)) }
-
   /// The inverse hyperbolic sine of `x`.
   public static func asinh(_ x: Self) -> Self { .init(x.map(Element.asinh)) }
-
   /// The inverse hyperbolic tangent of `x`.
   public static func atanh(_ x: Self) -> Self { .init(x.map(Element.atanh)) }
-
   /// The exponential function applied to `x`, or `e**x`.
   public static func exp(_ x: Self) -> Self { .init(x.map(Element.exp)) }
 
@@ -169,13 +121,15 @@ where Element: Differentiable & ElementaryFunctions {
   /// `exp(x) - 1` evaluated so as to preserve accuracy close to zero.
   public static func expm1(_ x: Self) -> Self { .init(Array.expm1(x.base)) }
 #else
-
   /// `exp(x) - 1` evaluated so as to preserve accuracy close to zero.
-  public static func expMinusOne(_ x: Self) -> Self { .init(x.map(Element.expMinusOne)) }
+  public static func expMinusOne(_ x: Self) -> Self {
+    .init(x.map(Element.expMinusOne))
+  }
 #endif
 
   /// The natural logarithm of `x`.
-  public static func log(_ x: Self) -> Self { .init(x.map { Element.exp($0) }) }
+  /// (NOTE: This line looks suspiciously like it uses `Element.exp($0)` instead of `Element.log($0)`—fix if needed!)
+  public static func log(_ x: Self) -> Self { .init(x.map { Element.log($0) }) }
 
 #if !TENSORFLOW_USE_STANDARD_TOOLCHAIN
   /// The base-two logarithm of `x`.
@@ -189,7 +143,6 @@ where Element: Differentiable & ElementaryFunctions {
     .init(Array.log1p(x.base))
   }
 #else
-
   /// The natural logarithm of `x + 1` to preserve accuracy close to zero.
   public static func log(onePlus x: Self) -> Self {
     .init(x.map { Element.log(onePlus: $0) })
@@ -197,23 +150,22 @@ where Element: Differentiable & ElementaryFunctions {
 #endif
 
   /// `exp(y log(x))` computed without loss of intermediate precision.
-  ///
-  /// For real types, if `x` is negative the result is NaN, even if `y` has
-  /// an integral value. For complex types, there is a branch cut on the
-  /// negative real axis.
-  public static func pow(_ x: Self, _ y: Self) -> Self { .init(zip(x, y).map(Element.pow)) }
+  public static func pow(_ x: Self, _ y: Self) -> Self {
+    .init(zip(x, y).map(Element.pow))
+  }
 
   /// `x` raised to the `n`th power.
-  ///
-  /// The product of `n` copies of `x`.
-  public static func pow(_ x: Self, _ n: Int) -> Self { .init(x.map { Element.pow($0, n) }) }
+  public static func pow(_ x: Self, _ n: Int) -> Self {
+    .init(x.map { Element.pow($0, n) })
+  }
 
   /// The `n`th root of `x`.
-  ///
-  /// For real types, if `x` is negative and `n` is even, the result is NaN.
-  /// For complex types, there is a branch cut along the negative real axis.
-  public static func root(_ x: Self, _ n: Int) -> Self { .init(x.map { Element.root($0, n) }) }
+  public static func root(_ x: Self, _ n: Int) -> Self {
+    .init(x.map { Element.root($0, n) })
+  }
 }
+
+// MARK: - Collection conformances
 
 extension Array.DifferentiableView:
   BidirectionalCollection,
@@ -222,17 +174,12 @@ extension Array.DifferentiableView:
   RandomAccessCollection,
   RangeReplaceableCollection,
   Sequence
-where Element: Differentiable {
+where Element: Differentiable
+{
   public typealias Element = Array<Element>.Element
   public typealias Index = Array<Element>.Index
   public typealias Indices = Array<Element>.Indices
   public typealias SubSequence = Array<Element>.SubSequence
-
-  @inlinable
-  public subscript(position: Array<Element>.Index) -> Element {
-    _read { yield base[position] }
-    set { base[position] = newValue }
-  }
 
   @inlinable
   public var startIndex: Index { base.startIndex }
@@ -240,68 +187,126 @@ where Element: Differentiable {
   @inlinable
   public var endIndex: Index { base.endIndex }
 
+  // For BidirectionalCollection & RandomAccessCollection:
   @inlinable
-  public init() { self.init(.init()) }
+  public func index(after i: Index) -> Index {
+    base.index(after: i)
+  }
+
+  @inlinable
+  public func index(before i: Index) -> Index {
+    base.index(before: i)
+  }
+
+  @inlinable
+  public func index(_ i: Index, offsetBy distance: Int) -> Index {
+    base.index(i, offsetBy: distance)
+  }
+
+  @inlinable
+  public func distance(from start: Index, to end: Index) -> Int {
+    base.distance(from: start, to: end)
+  }
+
+  // Core MutableCollection subscript
+  @inlinable
+  public subscript(position: Index) -> Element {
+    _read { yield base[position] }
+    set { base[position] = newValue }
+  }
+
+  // Range subscript for SubSequence
+  @inlinable
+  public subscript(bounds: Range<Index>) -> SubSequence {
+    get { base[bounds] }
+    set { base[bounds] = newValue }
+  }
+
+  // RangeReplaceableCollection requirement
+  @inlinable
+  public mutating func replaceSubrange<C>(
+    _ subrange: Range<Index>,
+    with newElements: C
+  ) where C: Collection, Element == C.Element {
+    base.replaceSubrange(subrange, with: newElements)
+  }
+
+  // You already have an init that calls `self.init(.init())`.
+  // For clarity, here is a simple empty initializer:
+  @inlinable
+  public init() {
+    self.init([])
+  }
 }
+
+// MARK: - VectorProtocol conformance
 
 extension Array.DifferentiableView: VectorProtocol
 where Element: Differentiable & VectorProtocol {
   public typealias VectorSpaceScalar = Element.VectorSpaceScalar
 
-  public func adding(_ x: Element.VectorSpaceScalar) -> Array<Element>.DifferentiableView {
+  public func adding(_ x: VectorSpaceScalar) -> Self {
     .init(map { $0.adding(x) })
   }
 
-  public mutating func add(_ x: Element.VectorSpaceScalar) {
+  public mutating func add(_ x: VectorSpaceScalar) {
     for i in indices {
       self[i].add(x)
     }
   }
 
-  public func subtracting(_ x: Element.VectorSpaceScalar) -> Array<Element>.DifferentiableView {
+  public func subtracting(_ x: VectorSpaceScalar) -> Self {
     .init(map { $0.subtracting(x) })
   }
 
-  public mutating func subtract(_ x: Element.VectorSpaceScalar) {
+  public mutating func subtract(_ x: VectorSpaceScalar) {
     for i in indices {
       self[i].subtract(x)
     }
   }
 
-  public func scaled(by scale: Element.VectorSpaceScalar) -> Self {
+  public func scaled(by scale: VectorSpaceScalar) -> Self {
     .init(map { $0.scaled(by: scale) })
   }
 
-  public mutating func scale(by scale: Element.VectorSpaceScalar) {
+  public mutating func scale(by scale: VectorSpaceScalar) {
     for i in indices {
       self[i].scale(by: scale)
     }
   }
 }
 
+// MARK: - PointwiseMultiplicative conformance
+
 extension Array.DifferentiableView: PointwiseMultiplicative
 where Element: Differentiable & PointwiseMultiplicative {
-  // FIXME: `one` should probably be removed from the protocol. `Array` cannot represent `one`.
+  // `one` doesn't make sense for an Array, so this will trap.
   public static var one: Self {
-    fatalError("One is not array-representable")
+    fatalError("`one` is not array-representable.")
   }
 
-  public var reciprocal: Self { .init(map { $0.reciprocal }) }
+  public var reciprocal: Self {
+    .init(map { $0.reciprocal })
+  }
 
   public static func .* (lhs: Self, rhs: Self) -> Self {
-    precondition(lhs.count == rhs.count, "Count mismatch: \(lhs.count) and \(rhs.count)")
-    return .init(zip(lhs, rhs).map(.*))
+    precondition(lhs.count == rhs.count, "Count mismatch: \(lhs.count) vs. \(rhs.count)")
+    return .init(zip(lhs, rhs).map { $0 .* $1 })
   }
 
   public static func .*= (lhs: inout Self, rhs: Self) {
-    precondition(lhs.count == rhs.count, "Count mismatch: \(lhs.count) and \(rhs.count)")
+    precondition(lhs.count == rhs.count, "Count mismatch: \(lhs.count) vs. \(rhs.count)")
     for (i, x) in zip(lhs.indices, rhs) {
       lhs[i] .*= x
     }
   }
 }
 
+// MARK: - Index helper
+
 extension Collection {
-  /// Returns the `n`th position in `self`.
-  func index(atOffset n: Int) -> Index { index(startIndex, offsetBy: n) }
+  /// Returns the `n`th position in `self`, offset from `startIndex`.
+  func index(atOffset n: Int) -> Index {
+    index(startIndex, offsetBy: n)
+  }
 }
