@@ -12,365 +12,244 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
+
+//
+//  Layer.swift
+//  Example
+//
+//  This file defines `Module`, `Layer`, `ParameterlessLayer`, and related extensions.
+//  It uses `@differentiable(reverse, wrt: (self, input))` to match Swift's requirement
+//  when the protocol is declared in a separate file from the conforming types.
+//
+
 import _Differentiation
 import Foundation
 #if TENSORFLOW_USE_STANDARD_TOOLCHAIN
 import Numerics
 #endif
 
+/// A high-level “module” that maps `Input` to `Output`.
+///
+/// - `TangentVector` must be a type that conforms to:
+///   - `VectorProtocol` (so it can scale/add) 
+///   - `ElementaryFunctions`, `PointwiseMultiplicative`, 
+///   - `KeyPathIterable` (to iterate over parameters, if any).
 public protocol Module: EuclideanDifferentiable, KeyPathIterable
 where
   TangentVector: VectorProtocol & ElementaryFunctions & PointwiseMultiplicative & KeyPathIterable
 {
-  /// The input type of the layer.
+  /// The input type of this module.
   associatedtype Input
 
-  /// The output type of the layer.
+  /// The output type of this module, which must be `Differentiable`.
   associatedtype Output: Differentiable
 
-  /// Returns the output obtained from applying the layer to the given input.
+  /// Returns the output obtained from applying the module to the given input.
   ///
-  /// - Parameter input: The input to the layer.
-  /// - Returns: The output.
-  @differentiable(reverse)
+  /// - Parameter input: The input to this module.
+  /// - Returns: The module’s output.
+  ///
+  /// By specifying `@differentiable(reverse, wrt: (self, input))`, we guarantee that
+  /// differentiation can happen with respect to both the module parameters (`self`) and
+  /// the input.
+  @differentiable(reverse, wrt: (self, input))
   func callAsFunction(_ input: Input) -> Output
 
-  /// Returns the output obtained from applying the layer to the given input.
-  ///
-  /// - Parameter input: The input to the layer.
-  /// - Returns: The output.
-  @differentiable(reverse)
+  /// A secondary function that is also differentiable w.r.t. (self, input),
+  /// typically an alternative or alias for `callAsFunction(_:)`.
+  @differentiable(reverse, wrt: (self, input))
   func forward(_ input: Input) -> Output
 }
 
+// MARK: - Default Implementations for Module
+
 extension Module {
-  /// Returns the output obtained from applying the layer to the given input.
-  ///
-  /// - Parameter input: The input to the layer.
-  /// - Returns: The output.
-  @differentiable(reverse)
+  /// By default, `forward(_:)` just calls `callAsFunction(_:)`.
+  /// We use the same `@differentiable` specification so it
+  /// remains consistent with the protocol requirement.
+  @differentiable(reverse, wrt: (self, input))
   public func forward(_ input: Input) -> Output {
-    return callAsFunction(input)
+    callAsFunction(input)
   }
 }
 
+// MARK: - Additional Module Extensions
+
 extension Module where Input: TensorProtocol, Output: DifferentiableTensorProtocol {
-  /// Returns the annotated output obtained from applying the layer to the
-  /// given input.
+  
+  /*
+  /// A convenience wrapper that calls `forward(_:)` and then
+  /// optionally applies an “annotation” step for debugging/XLA.
   ///
-  /// - Parameter input: The input to the layer.
-  /// - Returns: The annotated output.
-  @differentiable(reverse)
+  /// We again specify `@differentiable(reverse, wrt: (self, input))` so it can
+  /// differentiate with respect to both module parameters and input.
+  @differentiable(reverse, wrt: (self, input))
   public func callAsFunction(_ input: Input) -> Output {
     let activation = forward(input)
     return annotated(activation)
   }
+  */
 
-  /// Annotates `output`.
-  ///
-  /// Note: Returns `output` if using a backend that does not support annotations.
-  ///
-  /// - Parameter output: The output to the layer.
-  /// - Returns: The annotated output.
-  @differentiable(reverse)
+  /// Annotates `output`—helpful for XLA or debugging.
+  @differentiable(reverse, wrt: (self, output))
   public func annotated(_ output: Output) -> Output {
-    let annotated = output.annotate("type=\(Self.self)")
-    return annotated
+    // You can store an annotation on `output` if desired.
+    // For example, it might store a “type=LayerName” string.
+    output.annotate("type=\(Self.self)")
   }
 
-  /// Returns the annotations obtained from applying the layer to the given input.
-  ///
-  /// - Parameter input: The input to the layer.
-  /// - Returns: All collected annotations from the XLA graph.
+  /// A user-friendly “summary” method that shows details
+  /// of the layer’s output shape, type, attributes, etc.
   public func summary(input: Input) -> String {
     let output = self.callAsFunction(input)
     return formatAnnotations(from: output)
   }
 
-  /// Returns a formatted version of `tensor.annotations`.
+  /// Formats the annotation string from a `DifferentiableTensorProtocol`.
   ///
-  /// - Parameter tensor: The output to the layer.
-  /// - Returns: A formatted summary of `tensor.annotations`.
+  /// This is purely for debug/visualization purposes.
   private func formatAnnotations(from tensor: Output) -> String {
     let rawAnnotations = tensor.annotations
     if rawAnnotations == Device.defaultTFEager.annotationsAvailable {
+      // If no special annotations, just return them.
       return rawAnnotations
     }
 
+    // Example: parse out lines matching `shape=... type=...`
     let lines = rawAnnotations.components(separatedBy: "\n")
-
     if lines.count < 3 {
       return ""
     }
 
-    // Isolate layers.
     let pattern = "\\s*shape=(.+)\\s+type=([^\\s]+)(\\s+.+=.+)?$"
     let regex = try! NSRegularExpression(pattern: pattern)
-    let contents = lines.filter { $0.contains("shape=") }
-      .map { line -> String in
-        let nsrange = NSRange(line.startIndex..., in: line)
-        if let match = regex.firstMatch(in: line, range: nsrange) {
-          var content = ""
-          if let typeRange = Range(match.range(at: 2), in: line) {
-            let type = line[typeRange]
-            content += type
-          }
-          content += "\t\t\t"
-          if let shapeRange = Range(match.range(at: 1), in: line) {
-            let shape = line[shapeRange]
-            content += shape
-          }
-          content += "\t\t"
-          if let attributesRange = Range(match.range(at: 3), in: line) {
-            let attribute = line[attributesRange]
-            content += attribute
-          }
-          return content
-        } else {
-          return line
-        }
+    let relevant = lines.filter { $0.contains("shape=") }
+
+    let contents = relevant.map { line -> String in
+      let range = NSRange(line.startIndex..., in: line)
+      guard let match = regex.firstMatch(in: line, range: range) else { return line }
+
+      // Extract the “type=”, “shape=”, and “attributes=…”
+      var content = ""
+      if let typeRange = Range(match.range(at: 2), in: line) {
+        content += line[typeRange]
       }
+      content += "\t\t\t"
+      if let shapeRange = Range(match.range(at: 1), in: line) {
+        content += line[shapeRange]
+      }
+      content += "\t\t"
+      if let attrRange = Range(match.range(at: 3), in: line) {
+        content += line[attrRange]
+      }
+      return content
+    }
 
-    let formattedAnnotations = """
-      Layer                           Output Shape         Attributes
-      =============================== ==================== ======================
-      \(contents.joined(separator: "\n"))
-      """
-
-    return formattedAnnotations
+    return """
+    Layer                           Output Shape         Attributes
+    =============================== ==================== ======================
+    \(contents.joined(separator: "\n"))
+    """
   }
 }
 
-/// A neural network layer.
-///
-/// Types that conform to `Layer` represent functions that map inputs to outputs. They may have an
-/// internal state represented by parameters, such as weight tensors.
-///
-/// `Layer` instances define a differentiable `callAsFunction(_:)` method for mapping inputs to
-/// outputs.
+// MARK: - The `Layer` protocol
+
+/// A “neural network layer” that refines `Module` by requiring:
+/// - `Input` is `Differentiable`.
+/// - The same `callAsFunction(_:)` signature, but typically focusing on NNs.
 public protocol Layer: Module where Input: Differentiable {
-  /// Returns the output obtained from applying the layer to the given input.
-  ///
-  /// - Parameter input: The input to the layer.
-  /// - Returns: The output.
-  @differentiable(reverse) 
+  /// We explicitly require `@differentiable(reverse, wrt: (self, input))` so that
+  /// the layer can be differentiated w.r.t. its parameters (`self`) and the input.
+  @differentiable(reverse, wrt: (self, input))
   func callAsFunction(_ input: Input) -> Output
 
-  @differentiable(reverse)
+  
+  @differentiable(reverse, wrt: (self, input))
   func forward(_ input: Input) -> Output
 }
 
-
 extension Layer {
-  // Workaround for SR-13455: autodiff undefined symbol linker error.
-  @differentiable(wrt: self)
-  @differentiable(reverse)
-  public func forward(_ input: Input) -> Output {
-    return callAsFunction(input)
+  public typealias Backpropagator = (
+    _ direction: Output.TangentVector
+  ) -> (
+    layerGradient: TangentVector,
+    inputGradient: Input.TangentVector
+  )
+
+  public func appliedForBackpropagation(to input: Input)
+    -> (output: Output, backpropagator: Backpropagator)
+  {
+    #if TENSORFLOW_USE_STANDARD_TOOLCHAIN
+      let (out, pullback) = _Differentiation.valueWithPullback(at: self, input) {
+        layer, input in layer(input)
+      }
+    #else
+      let (out, pullback) = Swift.valueWithPullback(at: self, input) {
+        layer, input in layer(input)
+      }
+    #endif
+
+    let backprop: Backpropagator = { direction in
+      pullback(direction)
+    }
+    return (out, backprop)
   }
 }
 
 
-extension Layer where Input: DifferentiableTensorProtocol, Output: DifferentiableTensorProtocol {
-  // Workaround for SR-13455: autodiff undefined symbol linker error.
-  @differentiable(reverse)
-  public func callAsFunction(_ input: Input) -> Output {
-    let activation = forward(input)
-    return annotated(activation)
-  }
+/// A parameter‐free neural network layer.
+///
+/// - `TangentVector == EmptyTangentVector`, meaning no trainable parameters.
+public protocol ParameterlessLayer: Layer where TangentVector == EmptyTangentVector {
+  /// The `callAsFunction(_:)` method must be differentiable w.r.t. (self, input),
+  /// matching the same signature as in `Layer`, just acknowledging no parameters.
+  @differentiable(reverse, wrt: (self, input))
+  func callAsFunction(_ input: Input) -> Output
 }
 
-/// An empty struct representing empty `TangentVector`s for parameterless layers.
-public struct EmptyTangentVector: EuclideanDifferentiable, VectorProtocol, ElementaryFunctions,
-  PointwiseMultiplicative, KeyPathIterable
+// MARK: - Default Implementations
+
+extension ParameterlessLayer {
+  /// Because there are no parameters, we define a no‐op `move(along:)`.
+  public mutating func move(along direction: EmptyTangentVector) {}
+
+  /// No parameter vectors to return.
+  public var differentiableVectorView: EmptyTangentVector { EmptyTangentVector() }
+}
+
+// MARK: - Utility: EmptyTangentVector
+
+/// A “no‐parameter” tangent vector, used by parameter‐free layers.
+public struct EmptyTangentVector: 
+  EuclideanDifferentiable,
+  VectorProtocol,
+  ElementaryFunctions,
+  PointwiseMultiplicative,
+  KeyPathIterable 
 {
   public typealias VectorSpaceScalar = Float
   public typealias TangentVector = Self
 
   public init() {}
 
-  public func adding(_ x: Float) -> EmptyTangentVector { self }
+  public func adding(_ x: Float) -> Self { self }
   public mutating func add(_ x: Float) {}
-  public func subtracting(_ x: Float) -> EmptyTangentVector { self }
+  public func subtracting(_ x: Float) -> Self { self }
   public mutating func subtract(_ x: Float) {}
-  public func scaled(by scalar: Float) -> EmptyTangentVector { self }
+  public func scaled(by scalar: Float) -> Self { self }
   public mutating func scale(by scalar: Float) {}
+
+  // PointwiseMultiplicative
+  public static var one: Self { Self() }
+  public var reciprocal: Self { Self() }
+  public static func .* (lhs: Self, rhs: Self) -> Self { Self() }
+  public static func .*= (lhs: inout Self, rhs: Self) {}
 }
 
-/// A parameterless neural network layer.
-///
-/// The `TangentVector` of parameterless layers is always `EmptyTangentVector`.
-public protocol ParameterlessLayer: Layer where TangentVector == EmptyTangentVector {
-  @differentiable(reverse)
-  func callAsFunction(_ input: Input) -> Output
-}
-
-extension ParameterlessLayer {
-  public mutating func move(along direction: EmptyTangentVector) {}
-  public var differentiableVectorView: EmptyTangentVector { EmptyTangentVector() }
-}
-
-extension Layer {
-  /// Returns the inference output obtained from applying the layer to the given input.
-  ///
-  /// - Parameter input: The input to the layer.
-  /// - Returns: The inference output.
-  public func inferring(from input: Input) -> Output {
-    withLearningPhase(LearningPhase.inference) { self(input) }
-  }
-
-  // TODO(TF-433, SR-11882): Remove this custom derivative when
-  // differentiation supports `rethrows` functions and currying.
-  @usableFromInline
-  @derivative(of: inferring(from:))
-  internal func _vjpInferring(from input: Input)
-    -> (
-      value: Output,
-      pullback: (Output.TangentVector)
-        -> (TangentVector, Input.TangentVector)
-    )
-  {
-    withLearningPhase(LearningPhase.inference) {
-      let (output, pullback) = appliedForBackpropagation(to: input)
-      return (output, { v in pullback(v) })
-    }
-  }
-
-  public typealias Backpropagator = (_ direction: Output.TangentVector)
-    -> (layerGradient: TangentVector, inputGradient: Input.TangentVector)
-
-  /// Returns the inference output and the backpropagation function obtained from applying the
-  /// layer to the given input.
-  ///
-  /// - Parameter input: The input to the layer.
-  /// - Returns: A tuple containing the output and the backpropagation function. The
-  ///   backpropagation function (a.k.a. backpropagator) takes a direction vector and returns the
-  ///   gradients at the layer and at the input, respectively.
-  public func appliedForBackpropagation(to input: Input)
-    -> (output: Output, backpropagator: Backpropagator)
-  {
-#if TENSORFLOW_USE_STANDARD_TOOLCHAIN
-    let (out, pullback) = _Differentiation.valueWithPullback(at: self, input) { layer, input in
-      return layer(input)
-    }
-#else
-    let (out, pullback) = Swift.valueWithPullback(at: self, input) { layer, input in
-      return layer(input)
-    }
-#endif
-    return (out, pullback)
-  }
-}
-
-extension Differentiable {
-  /// Returns the output computed by applying a sequence of layers to the previous layer's output,
-  /// except that the first layer's input is `self`.
-  ///
-  /// - Parameters:
-  ///   - l1: The first layer.
-  ///   - l2: The second layer.
-  /// - Returns: The final layer's output after sequential application.
-  @differentiable(reverse)
-  public func sequenced<L1: Layer, L2: Layer>(through l1: L1, _ l2: L2) -> L2.Output
-  where L1.Input == Self, L1.Output == L2.Input {
-    let o1 = l1(self)
-    return l2(o1)
-  }
-
-  /// Returns the output computed by applying a sequence of layers to the previous layer's output,
-  /// except that the first layer's input is `self`.
-  ///
-  /// - Parameters:
-  ///   - l1: The first layer.
-  ///   - l2: The second layer.
-  ///   - l3: The third layer.
-  /// - Returns: The final layer's output after sequential application.
-  @differentiable(reverse)
-  public func sequenced<L1: Layer, L2: Layer, L3: Layer>(through l1: L1, _ l2: L2, _ l3: L3)
-    -> L3.Output
-  where L1.Input == Self, L1.Output == L2.Input, L2.Output == L3.Input {
-    let o1 = l1(self)
-    let o2 = l2(o1)
-    return l3(o2)
-  }
-
-  /// Returns the output computed by applying a sequence of layers to the previous layer's output,
-  /// except that the first layer's input is `self`.
-  ///
-  /// - Parameters:
-  ///   - l1: The first layer.
-  ///   - l2: The second layer.
-  ///   - l3: The third layer.
-  ///   - l4: The fourth layer.
-  /// - Returns: The final layer's output after sequential application.
-  @differentiable(reverse)
-  public func sequenced<L1: Layer, L2: Layer, L3: Layer, L4: Layer>(
-    through l1: L1, _ l2: L2, _ l3: L3, _ l4: L4
-  ) -> L4.Output
-  where
-    L1.Input == Self, L1.Output == L2.Input, L2.Output == L3.Input,
-    L3.Output == L4.Input
-  {
-    let o1 = l1(self)
-    let o2 = l2(o1)
-    let o3 = l3(o2)
-    return l4(o3)
-  }
-
-  /// Returns the output computed by applying a sequence of layers to the previous layer's output,
-  /// except that the first layer's input is `self`.
-  ///
-  /// - Parameters:
-  ///   - l1: The first layer.
-  ///   - l2: The second layer.
-  ///   - l3: The third layer.
-  ///   - l4: The third layer.
-  ///   - l5: The fifth layer.
-  /// - Returns: The final layer's output after sequential application.
-  @differentiable(reverse)
-  public func sequenced<L1: Layer, L2: Layer, L3: Layer, L4: Layer, L5: Layer>(
-    through l1: L1, _ l2: L2, _ l3: L3, _ l4: L4, _ l5: L5
-  ) -> L5.Output
-  where
-    L1.Input == Self, L1.Output == L2.Input, L2.Output == L3.Input, L3.Output == L4.Input,
-    L4.Output == L5.Input
-  {
-    let o1 = l1(self)
-    let o2 = l2(o1)
-    let o3 = l3(o2)
-    let o4 = l4(o3)
-    return l5(o4)
-  }
-
-  /// Returns the output computed by applying a sequence of layers to the previous layer's output,
-  /// except that the first layer's input is `self`.
-  ///
-  /// - Parameters:
-  ///   - l1: The first layer.
-  ///   - l2: The second layer.
-  ///   - l3: The third layer.
-  ///   - l4: The third layer.
-  ///   - l5: The fifth layer.
-  ///   - l6: The sixth layer.
-  /// - Returns: The final layer's output after sequential application.
-  @differentiable(reverse)
-  public func sequenced<L1: Layer, L2: Layer, L3: Layer, L4: Layer, L5: Layer, L6: Layer>(
-    through l1: L1, _ l2: L2, _ l3: L3, _ l4: L4, _ l5: L5, _ l6: L6
-  ) -> L6.Output
-  where
-    L1.Input == Self, L1.Output == L2.Input, L2.Output == L3.Input, L3.Output == L4.Input,
-    L4.Output == L5.Input, L5.Output == L6.Input
-  {
-    let o1 = l1(self)
-    let o2 = l2(o1)
-    let o3 = l3(o2)
-    let o4 = l4(o3)
-    let o5 = l5(o4)
-    return l6(o5)
-  }
-}
-
-/// A mutable, shareable, owning reference to a tensor.
+/// A “Parameter” references a mutable `Tensor<Scalar>`.
+/// Often used for trainable parameters in a layer.
 public final class Parameter<Scalar: TensorFlowScalar> {
   public var value: Tensor<Scalar>
   public init(_ value: Tensor<Scalar>) {

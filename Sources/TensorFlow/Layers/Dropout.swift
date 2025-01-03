@@ -1,25 +1,12 @@
-// Copyright 2019 The TensorFlow Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 import _Differentiation
-
 #if os(Windows)
   import func CRT.sqrt
 #endif
 
+// MARK: - Extension: droppingOut(probability:)
+
 extension Tensor where Scalar: TensorFlowFloatingPoint {
-  /// Computes dropout given a probability.
+  /// Computes dropout for this tensor given a probability. Only used during training.
   @differentiable(reverse)
   fileprivate func droppingOut(probability: Double) -> Tensor {
     let noise = Tensor(randomUniform: shape, on: device)
@@ -29,177 +16,198 @@ extension Tensor where Scalar: TensorFlowFloatingPoint {
   }
 }
 
-/// A dropout layer.
+// MARK: - Dropout
+
+/// A dropout layer. Randomly sets input elements to `0` with probability `p`,
+/// scaling the rest by `1/(1-p)` so that the overall sum remains the same.
 ///
-/// Dropout consists in randomly setting a fraction of input units to `0` at each update during
-/// training time, which helps prevent overfitting.
+/// This acts as a regularization technique: it is active during training and does nothing during
+/// inference.
 @frozen
 public struct Dropout<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
+  public typealias Input = Tensor<Scalar>
+  public typealias Output = Tensor<Scalar>
   public typealias TangentVector = EmptyTangentVector
 
-   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
-  public mutating func move(by offset: EmptyTangentVector) {
-    // No parameters to update, so do nothing.
-  }
+  /// No parameters, so the move is a no-op.
+  public mutating func move(by offset: EmptyTangentVector) {}
 
   @noDerivative public let probability: Double
 
-  /// Creates a dropout layer.
+  /// Creates a dropout layer with the specified probability.
   ///
-  /// - Parameter probability: The probability of a node dropping out.
-  /// - Precondition: probability must be a value between 0 and 1 (inclusive).
+  /// - Parameter probability: Probability of dropping out each element. Must be in [0,1].
   public init(probability: Double) {
     precondition(
       0...1 ~= probability,
-      "Probability must be a value between 0 and 1 (inclusive) but is \(probability)")
+      "Probability must be in [0,1] but is \(probability)."
+    )
     self.probability = probability
   }
 
-  /// Returns the output obtained from applying the layer to the given input.
-  ///
-  /// - Parameter input: The input to the layer.
-  /// - Returns: The output.
-  @differentiable(reverse)
+  @differentiable(reverse, wrt: (self, input))
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     switch Context.local.learningPhase {
     case .training:
       return input.droppingOut(probability: probability)
     case .inference:
+      // pass-through
       return input
     }
   }
+
+  /// Satisfies `ParameterlessLayer` by delegating to `forward(_:)`.
+  @differentiable(reverse, wrt: (self, input))
+  public func callAsFunction(_ input: Input) -> Output {
+    forward(input)
+  }
 }
 
-/// `GaussianNoise` adds noise sampled from a normal distribution.
+// MARK: - GaussianNoise
+
+/// A layer that adds noise sampled from a normal distribution with mean = 0.
 ///
-/// The noise added always has mean zero, but has a configurable standard deviation.
+/// This is only active during training; in inference, it is a pass-through.
+@frozen
 public struct GaussianNoise<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
+  public typealias Input = Tensor<Scalar>
+  public typealias Output = Tensor<Scalar>
   public typealias TangentVector = EmptyTangentVector
 
-   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
-  public mutating func move(by offset: EmptyTangentVector) {
-    // No parameters to update, so do nothing.
-  }
+  public mutating func move(by offset: EmptyTangentVector) {}
 
   @noDerivative public let standardDeviation: Tensor<Scalar>
 
-  /// Creates a Gaussian noise layer
-  ///
-  /// - Parameter standardDeviation: Standard deviation of the Guassian distribution
+  /// Creates a Gaussian noise layer with the specified standard deviation.
   public init(standardDeviation: Scalar) {
     self.standardDeviation = Tensor<Scalar>(standardDeviation)
   }
 
-  /// Returns a tensor obtained by adding noise to `input`
-  @differentiable(reverse)
+  @differentiable(reverse, wrt: (self, input))
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     switch Context.local.learningPhase {
     case .training:
       let noise = Tensor<Scalar>(
-        randomNormal: input.shape, mean: Tensor<Scalar>(0),
+        randomNormal: input.shape,
+        mean: Tensor<Scalar>(0),
         standardDeviation: self.standardDeviation)
       return input + noise
     case .inference:
       return input
     }
   }
+
+  /// Satisfies `ParameterlessLayer` by delegating to `forward(_:)`.
+  @differentiable(reverse, wrt: (self, input))
+  public func callAsFunction(_ input: Input) -> Output {
+    forward(input)
+  }
 }
 
-/// `GaussianDropout` multiplies the input with the noise sampled from a normal distribution with mean 1.0.
+// MARK: - GaussianDropout
+
+/// A layer that multiplies the input by noise sampled from a normal distribution with mean = 1.0.
 ///
-/// Because this is a regularization layer, it is only active during training time. During inference,
-/// `GaussianDropout` passes through the input unmodified.
+/// This is only active during training; in inference, it is a pass-through.
+/// Probability must be in [0,1].
+///
+/// `stddev = sqrt(probability / (1 - probability))`
+@frozen
 public struct GaussianDropout<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
+  public typealias Input = Tensor<Scalar>
+  public typealias Output = Tensor<Scalar>
   public typealias TangentVector = EmptyTangentVector
 
-   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
-  public mutating func move(by offset: EmptyTangentVector) {
-    // No parameters to update, so do nothing.
-  }
+  public mutating func move(by offset: EmptyTangentVector) {}
 
   @noDerivative public let probability: Scalar
   @noDerivative public let standardDeviation: Scalar
 
-  /// Creates a Gaussian dropout layer.
-  ///
-  /// - Parameter probability: The probability of a node dropping out.
-  /// - Precondition: probability must be a value between 0 and 1 (inclusive).
   public init(probability: Scalar) {
     precondition(
       0...1 ~= probability,
-      "Probability must be a value between 0 and 1 (inclusive) but is \(probability)")
+      "Probability must be in [0,1], but is \(probability)."
+    )
     self.probability = probability
-    standardDeviation = sqrt(probability / (1.0 - probability))
+    // stddev = sqrt(probability / (1 - probability))
+    self.standardDeviation = sqrt(probability / (1 - probability))
   }
 
-  /// Applies multiplicative 1-centered Gaussian noise to the input during training only.
-  @differentiable(reverse)
+  @differentiable(reverse, wrt: (self, input))
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     switch Context.local.learningPhase {
     case .training:
       let noise = Tensor<Scalar>(
-        randomNormal: input.shape, mean: Tensor<Scalar>(1.0),
+        randomNormal: input.shape,
+        mean: Tensor<Scalar>(1.0),
         standardDeviation: Tensor<Scalar>(standardDeviation))
       return input * noise
     case .inference:
       return input
     }
   }
+
+  /// Satisfies `ParameterlessLayer`.
+  @differentiable(reverse, wrt: (self, input))
+  public func callAsFunction(_ input: Input) -> Output {
+    forward(input)
+  }
 }
 
-/// An Alpha dropout layer.
-///
-/// Alpha Dropout is a `Dropout` that keeps mean and variance of inputs to their
-/// original values, in order to ensure the self-normalizing property even after this
-/// dropout. Alpha Dropout fits well to Scaled Exponential Linear Units by randomly
-/// setting activations to the negative saturation value.
-///
-/// Source : Self-Normalizing Neural Networks: https://arxiv.org/abs/1706.02515
+// MARK: - AlphaDropout
+
+/// AlphaDropout is a dropout variant that keeps mean and variance of inputs
+/// close to original values, preserving "self-normalizing" properties.
+/// It's typically used with SELU activations. It randomly sets inputs to
+/// negative saturation value with probability = `probability`.
 @frozen
 public struct AlphaDropout<Scalar: TensorFlowFloatingPoint>: ParameterlessLayer {
+  public typealias Input = Tensor<Scalar>
+  public typealias Output = Tensor<Scalar>
   public typealias TangentVector = EmptyTangentVector
 
-   /// Required for `Differentiable` conformance, but has no effect if there are no parameters.
-  public mutating func move(by offset: EmptyTangentVector) {
-    // No parameters to update, so do nothing.
-  }
+  public mutating func move(by offset: EmptyTangentVector) {}
 
   @noDerivative public let probability: Double
 
-  /// Initializes an `AlphaDropout` layer with a configurable `probability`.
-  ///
-  /// - Parameter probability: The probability of a node dropping out.
-  /// - Precondition: probability must be a value between 0 and 1 (inclusive).
+  /// Creates an AlphaDropout layer with the specified probability.
+  /// Probability must be in [0,1].
   public init(probability: Double) {
     precondition(
       0...1 ~= probability,
-      "Probability must be a value between 0 and 1 (inclusive) but is \(probability)")
+      "Probability must be in [0,1], but is \(probability)."
+    )
     self.probability = probability
   }
 
-  /// Adds noise to `input` during training, and is a no-op during inference.
-  @differentiable(reverse)
+  @differentiable(reverse, wrt: (self, input))
   public func forward(_ input: Tensor<Scalar>) -> Tensor<Scalar> {
     switch Context.local.learningPhase {
     case .training:
-      let alpha = 1.6732632423543772848170429916717
-      let scale = 1.0507009873554804934193349852946
-      let alpha_p = -alpha * scale
+      let alpha = Scalar(1.6732632423543772848170429916717)
+      let scale = Scalar(1.0507009873554804934193349852946)
+      let alphaP = -alpha * scale
+      // The probability for dropping out each element is `probability`.
       let uniform = Tensor<Scalar>(randomUniform: input.shape, on: input.device)
-      let noise = uniform .>= Scalar(probability)
+      let keepMask = uniform .>= Scalar(probability)
 
-      // Get affine transformation params
-      let a = pow(((1 - probability) * (1 + probability * pow(alpha_p, 2))), -0.5)
-      let b = -a * alpha_p * probability
+      // Next, we compute the "a" and "b" constants from the original paper:
+      let a = Scalar(1.0) / sqrt((Scalar(1.0) - Scalar(probability)) + Scalar(probability) * alphaP * alphaP)
+      let b = -a * alphaP * Scalar(probability)
 
-      // Apply mask
-      var x = input * Tensor(noise)
-      x = x + Scalar(alpha_p) * (1 - Tensor(noise))
+      // Where mask is false, we set to alphaP; where mask is true, we keep input.
+      var x = input * Tensor(keepMask)
+      x = x + alphaP * (1 - Tensor(keepMask))
 
-      // Do affine transformation
-      return Scalar(a) * x + Scalar(b)
+      return a * x + b
     case .inference:
       return input
     }
+  }
+
+  /// Satisfies `ParameterlessLayer` by delegating to `forward`.
+  @differentiable(reverse, wrt: (self, input))
+  public func callAsFunction(_ input: Input) -> Output {
+    forward(input)
   }
 }

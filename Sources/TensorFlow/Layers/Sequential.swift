@@ -16,22 +16,18 @@ import _Differentiation
 
 /// A layer that sequentially composes two or more other layers.
 ///
-/// ### Examples: ###
-///
-/// - Build a simple 2-layer perceptron model for MNIST:
-///
-/// ````
+/// - Example: A simple 2-layer perceptron.
+/// ```swift
 /// let inputSize = 28 * 28
 /// let hiddenSize = 300
 /// var classifier = Sequential {
-///      Dense<Float>(inputSize: inputSize, outputSize: hiddenSize, activation: relu)
-///      Dense<Float>(inputSize: hiddenSize, outputSize: 3, activation: identity)
-///  }
-/// ````
+///     Dense<Float>(inputSize: inputSize, outputSize: hiddenSize, activation: relu)
+///     Dense<Float>(inputSize: hiddenSize, outputSize: 3, activation: identity)
+/// }
+/// ```
 ///
-/// - Build an autoencoder for MNIST:
-///
-/// ````
+/// - Example: An autoencoder for MNIST.
+/// ```swift
 /// var autoencoder = Sequential {
 ///     // The encoder.
 ///     Dense<Float>(inputSize: 28 * 28, outputSize: 128, activation: relu)
@@ -42,38 +38,68 @@ import _Differentiation
 ///     Dense<Float>(inputSize: 3, outputSize: 12, activation: relu)
 ///     Dense<Float>(inputSize: 12, outputSize: 64, activation: relu)
 ///     Dense<Float>(inputSize: 64, outputSize: 128, activation: relu)
-///     Dense<Float>(inputSize: 128, outputSize: imageHeight * imageWidth, activation: tanh)
+///     Dense<Float>(inputSize: 128, outputSize: 28 * 28, activation: tanh)
 /// }
-/// ````
+/// ```
 public struct Sequential<Layer1: Module, Layer2: Layer>: Module
 where
   Layer1.Output == Layer2.Input,
   Layer1.TangentVector.VectorSpaceScalar == Layer2.TangentVector.VectorSpaceScalar
 {
+  // MARK: - Associated Types Required by `Module`
+  //
+  // Note: The `Module` protocol requires us to define:
+  //   associatedtype Input
+  //   associatedtype Output: Differentiable
+  //
+  // We set them to match the input/output of our two layers.
+
+  public typealias Input = Layer1.Input
+  public typealias Output = Layer2.Output
+
+  // MARK: - Stored Properties
+
   public var layer1: Layer1
   public var layer2: Layer2
+
+  // MARK: - Initializers
 
   public init(_ layer1: Layer1, _ layer2: Layer2) {
     self.layer1 = layer1
     self.layer2 = layer2
   }
 
-  @differentiable(reverse)
-  public func callAsFunction(_ input: Layer1.Input) -> Layer2.Output {
-    layer2(layer1(input))
-  }
-
+  /// An initializer that uses a layer builder to produce `Self`.
   public init(@LayerBuilder layers: () -> Self) {
     self = layers()
   }
-}
 
-extension Sequential: Layer where Layer1: Layer {
-  @differentiable(reverse)
-  public func callAsFunction(_ input: Layer1.Input) -> Layer2.Output {
+  // MARK: - `Module` Requirements
+
+  /// The `Module` protocol requires `@differentiable(reverse, wrt: (self, input))`
+  /// (or an equivalent spec) for `callAsFunction(_:)` and `forward(_:)`.
+  @differentiable(reverse, wrt: (self, input))
+  public func callAsFunction(_ input: Input) -> Output {
     layer2(layer1(input))
   }
+
+  @differentiable(reverse, wrt: (self, input))
+  public func forward(_ input: Input) -> Output {
+    callAsFunction(input)
+  }
 }
+
+// MARK: - Optional: Conformance to `Layer`
+extension Sequential: Layer
+where
+  Layer1: Layer, // So that `Layer1.Input : Differentiable`.
+  Input: Differentiable // i.e. `Layer1.Input` is Differentiable.
+{
+  // For `Layer` specifically, we’ve already defined
+  // `callAsFunction` and `forward` above as required.
+  // No additional changes needed here.
+}
+
 
 /// A layer that sequentially composes 3 layers.
 public typealias Sequential3<L1: Module, L2: Layer, L3: Layer> = Sequential<L1, Sequential<L2, L3>>

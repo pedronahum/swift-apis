@@ -18,135 +18,92 @@
 
 import _Differentiation
 
-// Value with gradient
-
+/// A helper function that returns rank-0 "1" with the same shape as `y`.
 @inlinable
-public func valueWithGradient<T, R>(
+func rank0Pullback<Scalar: TensorFlowFloatingPoint, Result>(
+  _ y: Tensor<Scalar>,
+  pullback: @escaping (Tensor<Scalar>) -> Result
+) -> Result
+{
+  precondition(y.rank == 0, "Return must be a rank-0 tensor.")
+  let ones = Tensor<Scalar>(onesLike: y)
+  return pullback(ones)
+}
+
+// A single-argument "value + gradient" function. 
+@inlinable
+public func s4tfValueWithGradient<T, Scalar>(
   at x: T,
-  in f: @differentiable(reverse) (T) -> Tensor<R>
-) -> (value: Tensor<R>, gradient: T.TangentVector)
-where T: Differentiable, R: TensorFlowFloatingPoint {
+  of f: @differentiable(reverse) (T) -> Tensor<Scalar>
+) -> (value: Tensor<Scalar>, gradient: T.TangentVector)
+where T: Differentiable, Scalar: TensorFlowFloatingPoint 
+{
+  // 1) Standard library function is spelled: valueWithPullback(at:of:)
   let (y, pullback) = valueWithPullback(at: x, of: f)
-  precondition(
-    y.rank == 0,
-    """
-    The function being differentiated produced a tensor with shape \(y.shape). \
-    You can only compute the gradient of functions that return scalar values.
-    """)
-  return (value: y, gradient: pullbackOfOneLikeY(y: y, pullback: pullback))
+  // 2) Check rank-0, apply pullback(1).
+  precondition(y.rank == 0, "Return must be rank-0 tensor.")
+  let grad = rank0Pullback(y, pullback: pullback)
+  return (y, grad)
 }
 
 @inlinable
-public func valueWithGradient<T, U, R>(
+public func s4tfGradient<T, Scalar>(
   at x: T,
-  _ y: U,
-  in f: @differentiable(reverse) (T, U) -> Tensor<R>
-) -> (value: Tensor<R>, gradient: (T.TangentVector, U.TangentVector))
-where T: Differentiable, U: Differentiable, R: TensorFlowFloatingPoint {
-  let (y, pullback) = valueWithPullback(at: x, y, of: f)
-  precondition(
-    y.rank == 0,
-    """
-    The function being differentiated produced a tensor with shape \(y.shape). \
-    You can only compute the gradient of functions that return scalar values.
-    """)
-  return (value: y, gradient: pullbackOfOneLikeY(y: y, pullback: pullback))
+  in f: @differentiable(reverse) (T) -> Tensor<Scalar>
+) -> T.TangentVector
+where T: Differentiable, Scalar: TensorFlowFloatingPoint
+{
+  s4tfValueWithGradient(at: x, of: f).gradient
+}
+
+// ----------------------------------------
+//  Two-argument "value + gradient"
+// ----------------------------------------
+@inlinable
+public func s4tfValueWithGradient<T, U, Scalar>(
+  at x: T, _ y: U,
+  in f: @differentiable(reverse) (T, U) -> Tensor<Scalar>
+) -> (value: Tensor<Scalar>, gradient: (T.TangentVector, U.TangentVector))
+where T: Differentiable, U: Differentiable, Scalar: TensorFlowFloatingPoint
+{
+  let (out, pullback) = valueWithPullback(at: x, y, of: f)
+  precondition(out.rank == 0, "Return must be a scalar (rank-0) tensor.")
+  let grads = pullbackOfOneLikeY(y: out, pullback: pullback)
+  return (out, grads)
 }
 
 @inlinable
-public func valueWithGradient<T, U, V, R>(
-  at x: T,
-  _ y: U,
-  _ z: V,
-  in f: @differentiable(reverse) (T, U, V) -> Tensor<R>
-) -> (value: Tensor<R>, gradient: (T.TangentVector, U.TangentVector, V.TangentVector))
-where T: Differentiable, U: Differentiable, V: Differentiable, R: TensorFlowFloatingPoint {
-  let (y, pullback) = valueWithPullback(at: x, y, z, of: f)
-  precondition(y.rank == 0)
-  return (y, pullbackOfOneLikeY(y: y, pullback: pullback))
-}
-
-// Value with gradient (curried)
-
-@inlinable
-public func valueWithGradient<T, R>(
-  of f: @escaping @differentiable(reverse) (T) -> Tensor<R>
-) -> (T) -> (value: Tensor<R>, gradient: T.TangentVector)
-where T: Differentiable, R: TensorFlowFloatingPoint {
-  return { x in valueWithGradient(at: x, of: f) }
-}
-
-@inlinable
-public func valueWithGradient<T, U, R>(
-  of f: @escaping @differentiable(reverse) (T, U) -> Tensor<R>
-) -> (T, U) -> (value: Tensor<R>, gradient: (T.TangentVector, U.TangentVector))
-where T: Differentiable, U: Differentiable, R: TensorFlowFloatingPoint {
-  return { x, y in valueWithGradient(at: x, y, of: f) }
-}
-
-@inlinable
-public func valueWithGradient<T, U, V, R>(
-  of f: @escaping @differentiable(reverse) (T, U, V) -> Tensor<R>
-) -> (T, U, V) -> (
-  value: Tensor<R>,
-  gradient: (T.TangentVector, U.TangentVector, V.TangentVector)
-)
-where T: Differentiable, U: Differentiable, V: Differentiable, R: TensorFlowFloatingPoint {
-  return { x, y, z in valueWithGradient(at: x, y, z, of: f) }
-}
-
-// Gradient
-
-@inlinable
-public func gradient<T, R>(
-  at x: T,
-  in f: @differentiable(reverse) (T) -> Tensor<R>
-) -> T.TangentVector where T: Differentiable, R: TensorFlowFloatingPoint {
-  return valueWithGradient(at: x, of: f).1
-}
-
-@inlinable
-public func gradient<T, U, R>(
-  at x: T,
-  _ y: U,
-  in f: @differentiable(reverse) (T, U) -> Tensor<R>
+public func s4tfGradient<T, U, Scalar>(
+  at x: T, _ y: U,
+  in f: @differentiable(reverse) (T, U) -> Tensor<Scalar>
 ) -> (T.TangentVector, U.TangentVector)
-where T: Differentiable, U: Differentiable, R: TensorFlowFloatingPoint {
-  return valueWithGradient(at: x, y, of: f).1
+where T: Differentiable, U: Differentiable, Scalar: TensorFlowFloatingPoint
+{
+  s4tfValueWithGradient(at: x, y, in: f).gradient
+}
+
+// ----------------------------------------
+//  Three-argument "value + gradient"
+// ----------------------------------------
+@inlinable
+public func s4tfValueWithGradient<T, U, V, Scalar>(
+  at x: T, _ y: U, _ z: V,
+  in f: @differentiable(reverse) (T, U, V) -> Tensor<Scalar>
+) -> (value: Tensor<Scalar>, gradient: (T.TangentVector, U.TangentVector, V.TangentVector))
+where T: Differentiable, U: Differentiable, V: Differentiable, Scalar: TensorFlowFloatingPoint
+{
+  let (out, pullback) = valueWithPullback(at: x, y, z, of: f)
+  precondition(out.rank == 0, "Return must be a scalar (rank-0) tensor.")
+  let grads = pullbackOfOneLikeY(y: out, pullback: pullback)
+  return (out, grads)
 }
 
 @inlinable
-public func gradient<T, U, V, R>(
-  at x: T,
-  _ y: U,
-  _ z: V,
-  in f: @differentiable(reverse) (T, U, V) -> Tensor<R>
+public func s4tfGradient<T, U, V, Scalar>(
+  at x: T, _ y: U, _ z: V,
+  in f: @differentiable(reverse) (T, U, V) -> Tensor<Scalar>
 ) -> (T.TangentVector, U.TangentVector, V.TangentVector)
-where T: Differentiable, U: Differentiable, V: Differentiable, R: TensorFlowFloatingPoint {
-  return valueWithGradient(at: x, y, z, of: f).1
-}
-
-// Gradient (curried)
-
-@inlinable
-public func gradient<T, R>(
-  of f: @escaping @differentiable(reverse) (T) -> Tensor<R>
-) -> (T) -> T.TangentVector where T: Differentiable, R: TensorFlowFloatingPoint {
-  return { x in gradient(at: x, of: f) }
-}
-
-@inlinable
-public func gradient<T, U, R>(
-  of f: @escaping @differentiable(reverse) (T, U) -> Tensor<R>
-) -> (T, U) -> (T.TangentVector, U.TangentVector)
-where T: Differentiable, U: Differentiable, R: TensorFlowFloatingPoint {
-  return { x, y in gradient(at: x, y, in: f) }
-}
-
-@inlinable
-public func gradient<T, U, V, R>(
-  of f: @escaping @differentiable(reverse) (T, U, V) -> Tensor<R>
-) -> (T, U, V) -> (T.TangentVector, U.TangentVector, V.TangentVector)
-where T: Differentiable, U: Differentiable, V: Differentiable, R: TensorFlowFloatingPoint {
-  return { x, y, z in gradient(at: x, y, z, of: f) }
+where T: Differentiable, U: Differentiable, V: Differentiable, Scalar: TensorFlowFloatingPoint
+{
+  s4tfValueWithGradient(at: x, y, z, in: f).gradient
 }

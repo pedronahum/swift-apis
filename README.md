@@ -23,6 +23,16 @@ cmake -B out -G Ninja \
 cmake --build out
 ```
 
+As of today, I am facing a SIL issue related to Conv1D. Trying to understand if this is a compiler bug or human driven:
+
+This particular compiler crash:
+
+    While computing canonical type for
+    type '@convention(thin) <Self where Self : Module> (τ_0_0) -> (τ_0_0.Input) -> (τ_0_0.Output, (τ_0_0.Input.TangentVector, τ_0_0.TangentVector) -> τ_0_0.Output.TangentVector)'
+    ... This usually indicates the caller passed the wrong type or generic signature to getReducedType().
+
+Swift's type-checker got stuck or confused while generating the differentiable function signature for a type conforming to Module
+
 # Swift for TensorFlow Deep Learning Library
 
 Get a taste of *protocol-oriented differentiable programming*.
